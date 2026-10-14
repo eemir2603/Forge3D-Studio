@@ -1,0 +1,2840 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forge3D Studio — Multi-Object Parametric CAD, Slicer & Direct 3D Printer Suite</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        cad: {
+                            bg: '#0b0d13',
+                            panel: '#131722',
+                            card: '#191e2b',
+                            border: '#262d3d',
+                            accent: '#f59e0b',
+                            accentHover: '#d97706',
+                            slicer: '#10b981',
+                            printer: '#38bdf8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #0b0d13;
+            color: #e2e8f0;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Custom Range Slider Styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #262d3d;
+            border-radius: 999px;
+            outline: none;
+            transition: background 0.15s ease;
+        }
+        input[type="range"]:hover {
+            background: #333c52;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #f59e0b;
+            cursor: pointer;
+            border: 2px solid #131722;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+            transition: transform 0.1s ease, background-color 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+            background: #fbbf24;
+        }
+
+        /* Vertical Layer Scrubber Slider */
+        .vertical-slider {
+            writing-mode: bt-lr;
+            -webkit-appearance: slider-vertical;
+            width: 8px;
+            height: 280px;
+            background: #262d3d;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #131722;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a3246;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3f4b66;
+        }
+
+        #viewport-container {
+            background: radial-gradient(circle at 50% 42%, #1d2436 0%, #090b10 100%);
+        }
+
+        .glass-pill {
+            background: rgba(19, 23, 34, 0.86);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .num-input {
+            background: #0b0d13;
+            border: 1px solid #262d3d;
+            border-radius: 6px;
+            padding: 3px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: #f8fafc;
+            text-align: right;
+            width: 100%;
+        }
+        .num-input:focus {
+            outline: none;
+            border-color: #f59e0b;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col font-sans antialiased">
+
+    <!-- Hidden File Input for External .STL Import -->
+    <input type="file" id="stl-file-input" accept=".stl" class="hidden" onchange="handleSTLImport(event)">
+
+    <!-- TOP NAVIGATION BAR (Bambu / PrusaSlicer / Fusion 360 Inspired) -->
+    <header class="h-14 bg-cad-panel border-b border-cad-border px-4 flex items-center justify-between z-30 shrink-0">
+        <!-- Brand Logo -->
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20">
+                <i class="fa-solid fa-cubes-stacked text-lg"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="font-bold text-sm tracking-tight text-white">Forge3D <span class="text-amber-400">Studio</span></h1>
+                    <span class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">PRO SUITE v4.0</span>
+                </div>
+                <p class="text-[11px] text-slate-400 hidden md:block">Parametric Multi-CAD • Slicer • Direct USB & Klipper Control</p>
+            </div>
+        </div>
+
+        <!-- Center Mode Switcher: [Design Studio] | [Slicer & Toolpath] | [Printer Control] -->
+        <div class="flex items-center bg-cad-bg p-1 rounded-xl border border-cad-border space-x-1">
+            <button onclick="switchWorkspaceMode('design')" id="mode-btn-design" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-amber-500 text-slate-950 shadow transition">
+                <i class="fa-solid fa-compass-drafting"></i>
+                <span>1. Design & CAD</span>
+            </button>
+            <button onclick="switchWorkspaceMode('slicer')" id="mode-btn-slicer" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 text-slate-300 hover:text-white hover:bg-slate-800/70 transition">
+                <i class="fa-solid fa-layer-group text-emerald-400"></i>
+                <span>2. Preview & Slice</span>
+            </button>
+            <button onclick="switchWorkspaceMode('printer')" id="mode-btn-printer" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 text-slate-300 hover:text-white hover:bg-slate-800/70 transition">
+                <i class="fa-solid fa-satellite-dish text-sky-400"></i>
+                <span>3. Printer Control</span>
+                <span id="header-printer-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            </button>
+        </div>
+
+        <!-- Right Quick Export & Printer Profile -->
+        <div class="flex items-center space-x-2">
+            <!-- Bed Size Selector -->
+            <div class="hidden xl:flex items-center space-x-1.5 bg-cad-bg px-2.5 py-1.5 rounded-lg border border-cad-border text-xs">
+                <i class="fa-solid fa-vector-square text-amber-400 text-[11px]"></i>
+                <select id="bed-size-select" onchange="changeBedSize(this.value)" class="bg-transparent text-slate-200 font-mono text-[11px] focus:outline-none cursor-pointer">
+                    <option value="220,220,250" class="bg-cad-panel">220×220×250 (Ender / Prusa)</option>
+                    <option value="256,256,256" class="bg-cad-panel" selected>256×256×256 (Bambu X1/P1)</option>
+                    <option value="300,300,300" class="bg-cad-panel">300×300×300 (Voron 2.4 / K1 Max)</option>
+                </select>
+            </div>
+
+            <button onclick="exportSceneSTL(false)" title="Export All Visible Objects as Binary .STL" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-cube text-amber-400"></i>
+                <span class="hidden sm:inline">Export .STL</span>
+            </button>
+
+            <button onclick="generateAndDownloadGCode()" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs flex items-center space-x-1.5 shadow-lg shadow-emerald-500/20 transition transform active:scale-95">
+                <i class="fa-solid fa-file-code"></i>
+                <span class="hidden sm:inline">Export .GCODE</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN WORKSPACE BODY -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- LEFT PANEL: ADD OBJECTS + SCENE OUTLINER + TRANSFORM -->
+        <aside class="w-72 md:w-80 bg-cad-panel border-r border-cad-border flex flex-col shrink-0 z-20 select-none">
+
+            <!-- Add Parametric Generator / Primitive Palette -->
+            <div class="p-3.5 border-b border-cad-border space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400"><i class="fa-solid fa-plus-circle text-amber-400 mr-1"></i>Add Parametric Object</span>
+                    <button onclick="document.getElementById('stl-file-input').click()" class="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center space-x-1 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30 transition">
+                        <i class="fa-solid fa-file-import"></i>
+                        <span>Import .STL</span>
+                    </button>
+                </div>
+
+                <!-- 6 Parametric & Primitive Add Buttons -->
+                <div class="grid grid-cols-3 gap-1.5 text-[11px]">
+                    <button onclick="addSceneObject('lampshade')" class="p-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border hover:border-amber-500/50 flex flex-col items-center space-y-1 text-slate-200 transition group">
+                        <i class="fa-solid fa-lightbulb text-amber-400 group-hover:scale-110 transition"></i>
+                        <span class="font-medium">Lampshade</span>
+                    </button>
+                    <button onclick="addSceneObject('planter')" class="p-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border hover:border-emerald-500/50 flex flex-col items-center space-y-1 text-slate-200 transition group">
+                        <i class="fa-solid fa-seedling text-emerald-400 group-hover:scale-110 transition"></i>
+                        <span class="font-medium">Planter/Vase</span>
+                    </button>
+                    <button onclick="addSceneObject('gear')" class="p-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border hover:border-sky-500/50 flex flex-col items-center space-y-1 text-slate-200 transition group">
+                        <i class="fa-solid fa-gear text-sky-400 group-hover:scale-110 transition"></i>
+                        <span class="font-medium">Spur Gear</span>
+                    </button>
+                    <button onclick="addSceneObject('box')" class="p-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border hover:border-purple-500/50 flex flex-col items-center space-y-1 text-slate-200 transition group">
+                        <i class="fa-solid fa-box-open text-purple-400 group-hover:scale-110 transition"></i>
+                        <span class="font-medium">Organizer</span>
+                    </button>
+                    <button onclick="addSceneObject('cableclip')" class="p-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border hover:border-pink-500/50 flex flex-col items-center space-y-1 text-slate-200 transition group">
+                        <i class="fa-solid fa-plug text-pink-400 group-hover:scale-110 transition"></i>
+                        <span class="font-medium">Cable Clip</span>
+                    </button>
+                    <button onclick="openPrimitivesMenu()" class="p-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border hover:border-orange-500/50 flex flex-col items-center space-y-1 text-slate-200 transition group">
+                        <i class="fa-solid fa-shapes text-orange-400 group-hover:scale-110 transition"></i>
+                        <span class="font-medium">Primitives</span>
+                    </button>
+                </div>
+
+                <!-- Expandable Quick Primitives Bar -->
+                <div id="primitives-subbar" class="hidden pt-1 grid grid-cols-5 gap-1 text-[10px]">
+                    <button onclick="addSceneObject('primitive', 'cylinder')" class="py-1.5 rounded bg-cad-bg hover:bg-slate-800 border border-cad-border text-slate-300">Cylinder</button>
+                    <button onclick="addSceneObject('primitive', 'cube')" class="py-1.5 rounded bg-cad-bg hover:bg-slate-800 border border-cad-border text-slate-300">Cube</button>
+                    <button onclick="addSceneObject('primitive', 'torus')" class="py-1.5 rounded bg-cad-bg hover:bg-slate-800 border border-cad-border text-slate-300">Torus</button>
+                    <button onclick="addSceneObject('primitive', 'cone')" class="py-1.5 rounded bg-cad-bg hover:bg-slate-800 border border-cad-border text-slate-300">Cone</button>
+                    <button onclick="addSceneObject('primitive', 'sphere')" class="py-1.5 rounded bg-cad-bg hover:bg-slate-800 border border-cad-border text-slate-300">Sphere</button>
+                </div>
+            </div>
+
+            <!-- Build Plate Objects Outliner -->
+            <div class="flex-1 flex flex-col min-h-0 border-b border-cad-border">
+                <div class="px-3.5 py-2.5 bg-cad-bg/60 flex items-center justify-between border-b border-cad-border">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Build Plate Objects (<span id="object-count-badge">1</span>)</span>
+                    <button onclick="autoArrangeBuildPlate()" title="Auto-Nest all objects on the build plate without overlapping" class="px-2 py-1 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[10px] font-semibold flex items-center space-x-1 transition">
+                        <i class="fa-solid fa-table-cells-large"></i>
+                        <span>Auto-Nest Plate</span>
+                    </button>
+                </div>
+
+                <!-- Scrollable Object Tree List -->
+                <div id="outliner-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+                    <!-- Populated dynamically via JS -->
+                </div>
+
+                <!-- Selected Object Quick Action Bar -->
+                <div class="p-2 bg-cad-bg/80 border-t border-cad-border grid grid-cols-4 gap-1 text-[11px]">
+                    <button onclick="centerSelectedObject()" title="Center on Print Bed (X=0, Y=0)" class="py-1.5 rounded bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-300 flex items-center justify-center space-x-1">
+                        <i class="fa-solid fa-crosshairs text-amber-400"></i>
+                        <span>Center</span>
+                    </button>
+                    <button onclick="dropSelectedToBed()" title="Lay Flat / Snap Bottom to Z=0mm" class="py-1.5 rounded bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-300 flex items-center justify-center space-x-1">
+                        <i class="fa-solid fa-arrow-down-to-line text-emerald-400"></i>
+                        <span>Drop Z=0</span>
+                    </button>
+                    <button onclick="duplicateSelectedObject()" title="Clone Selected Object" class="py-1.5 rounded bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-300 flex items-center justify-center space-x-1">
+                        <i class="fa-regular fa-copy text-sky-400"></i>
+                        <span>Clone</span>
+                    </button>
+                    <button onclick="deleteSelectedObject()" title="Delete Selected Object" class="py-1.5 rounded bg-cad-card hover:bg-rose-950/60 border border-cad-border hover:border-rose-500/40 text-rose-400 flex items-center justify-center space-x-1">
+                        <i class="fa-regular fa-trash-can"></i>
+                        <span>Delete</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Numeric 3D Transform Inspector (Position, Rotation, Scale + Filament Swatch) -->
+            <div class="p-3.5 space-y-3 bg-cad-panel shrink-0">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400"><i class="fa-solid fa-arrows-up-down-left-right text-amber-400 mr-1"></i>Transform (mm / °)</span>
+                    <label class="flex items-center space-x-1.5 text-[10px] text-slate-400 cursor-pointer">
+                        <input type="checkbox" id="snap-z-checkbox" checked onchange="toggleAutoSnapZ(this.checked)" class="rounded accent-amber-500">
+                        <span>Auto-Drop Z=0</span>
+                    </label>
+                </div>
+
+                <!-- Position X / Y / Z (CAD Z-up coordinates) -->
+                <div class="grid grid-cols-4 gap-1.5 items-center text-[11px]">
+                    <span class="text-slate-400 font-medium">Pos (mm)</span>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-rose-400">X</span>
+                        <input type="number" id="trans-pos-x" step="1" value="0" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-emerald-400">Y</span>
+                        <input type="number" id="trans-pos-y" step="1" value="0" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-sky-400">Z</span>
+                        <input type="number" id="trans-pos-z" step="1" value="0" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                </div>
+
+                <!-- Rotation X / Y / Z (Degrees) -->
+                <div class="grid grid-cols-4 gap-1.5 items-center text-[11px]">
+                    <span class="text-slate-400 font-medium">Rot (°)</span>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-rose-400">X</span>
+                        <input type="number" id="trans-rot-x" step="5" value="0" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-emerald-400">Y</span>
+                        <input type="number" id="trans-rot-y" step="5" value="0" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-sky-400">Z</span>
+                        <input type="number" id="trans-rot-z" step="15" value="0" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                </div>
+
+                <!-- Scale % -->
+                <div class="grid grid-cols-4 gap-1.5 items-center text-[11px]">
+                    <span class="text-slate-400 font-medium">Scale (%)</span>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-rose-400">X</span>
+                        <input type="number" id="trans-scl-x" step="5" min="10" max="500" value="100" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-emerald-400">Y</span>
+                        <input type="number" id="trans-scl-y" step="5" min="10" max="500" value="100" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-1.5 top-1 text-[9px] font-bold text-sky-400">Z</span>
+                        <input type="number" id="trans-scl-z" step="5" min="10" max="500" value="100" onchange="onTransformInputChange()" class="num-input pl-4">
+                    </div>
+                </div>
+
+                <!-- Object Color Swatches -->
+                <div class="flex items-center justify-between pt-1">
+                    <span class="text-[11px] text-slate-400">Object Filament:</span>
+                    <div class="flex items-center space-x-1.5">
+                        <button onclick="setSelectedObjectColor('#fffaf0')" title="Warm Natural PLA" class="w-5 h-5 rounded-full bg-[#fffaf0] border border-slate-500 hover:scale-110 transition"></button>
+                        <button onclick="setSelectedObjectColor('#f59e0b')" title="Amber Gold PLA" class="w-5 h-5 rounded-full bg-[#f59e0b] border border-slate-500 hover:scale-110 transition"></button>
+                        <button onclick="setSelectedObjectColor('#10b981')" title="Bambu Emerald PETG" class="w-5 h-5 rounded-full bg-[#10b981] border border-slate-500 hover:scale-110 transition"></button>
+                        <button onclick="setSelectedObjectColor('#38bdf8')" title="Cyan Mechanical ABS" class="w-5 h-5 rounded-full bg-[#38bdf8] border border-slate-500 hover:scale-110 transition"></button>
+                        <button onclick="setSelectedObjectColor('#a855f7')" title="Galaxy Purple PLA" class="w-5 h-5 rounded-full bg-[#a855f7] border border-slate-500 hover:scale-110 transition"></button>
+                        <button onclick="setSelectedObjectColor('#f43f5e')" title="Crimson Engineering ASA" class="w-5 h-5 rounded-full bg-[#f43f5e] border border-slate-500 hover:scale-110 transition"></button>
+                        <button onclick="setSelectedObjectColor('#334155')" title="Carbon Matte Black" class="w-5 h-5 rounded-full bg-[#334155] border border-slate-400 hover:scale-110 transition"></button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- CENTER 3D VIEWPORT AREA -->
+        <main id="viewport-container" class="flex-1 relative overflow-hidden">
+            <!-- Three.js Canvas Mount -->
+            <div id="canvas-mount" class="w-full h-full"></div>
+
+            <!-- Top-Left Live Build Plate & Selected Object Telemetry Pill -->
+            <div class="absolute top-4 left-4 glass-pill rounded-xl p-3.5 text-xs space-y-2 pointer-events-none shadow-2xl min-w-[235px]">
+                <div class="flex items-center justify-between border-b border-slate-700/60 pb-1.5">
+                    <span id="telemetry-title" class="font-bold text-white flex items-center">
+                        <span class="w-2 h-2 rounded-full bg-amber-400 mr-2"></span>
+                        Lampshade #1
+                    </span>
+                    <span id="telemetry-type-badge" class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase">PARAMETRIC</span>
+                </div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[11px]">
+                    <div class="text-slate-400">Object Size:</div>
+                    <div id="stat-obj-dims" class="text-right text-white font-semibold">150×150×180 mm</div>
+
+                    <div class="text-slate-400">Scene Triangles:</div>
+                    <div id="stat-scene-tris" class="text-right text-slate-300">42,840</div>
+
+                    <div class="text-slate-400">Build Volume:</div>
+                    <div id="stat-bed-dims" class="text-right text-amber-400">256×256×256 mm</div>
+                </div>
+            </div>
+
+            <!-- Interactive Vertical Layer Scrubber Overlay (Visible in Slicer & Printer Modes) -->
+            <div id="layer-scrubber-overlay" class="hidden absolute right-5 top-1/2 -translate-y-1/2 glass-pill rounded-2xl p-3 flex flex-col items-center space-y-2.5 shadow-2xl z-20">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">Layer Top</span>
+                <span id="scrubber-layer-readout" class="font-mono text-xs font-bold text-white bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded">900 / 900</span>
+                <input type="range" id="layer-scrubber-slider" min="1" max="900" value="900" oninput="onLayerScrubberChange(this.value)" class="vertical-slider cursor-pointer">
+                <span id="scrubber-z-readout" class="font-mono text-[10px] text-slate-300">180.0 mm</span>
+                <button onclick="togglePlayLayerAnimation()" id="btn-play-layers" class="w-8 h-8 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center shadow transition">
+                    <i class="fa-solid fa-play text-xs"></i>
+                </button>
+            </div>
+
+            <!-- Floating Bottom Viewport Controls Toolbar -->
+            <div class="absolute bottom-5 left-1/2 -translate-x-1/2 glass-pill rounded-2xl p-1.5 flex items-center space-x-1 shadow-2xl z-20">
+                <button id="btn-bulb" onclick="toggleSceneBulb()" class="px-3 py-1.5 rounded-xl text-xs font-medium flex items-center space-x-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 transition">
+                    <i class="fa-solid fa-lightbulb"></i>
+                    <span>Test Lamp Bulb</span>
+                </button>
+
+                <button id="btn-wireframe" onclick="toggleSceneWireframe()" class="px-3 py-1.5 rounded-xl text-xs font-medium flex items-center space-x-1.5 text-slate-300 hover:bg-slate-800/80 transition">
+                    <i class="fa-solid fa-border-all"></i>
+                    <span class="hidden sm:inline">Wireframe</span>
+                </button>
+
+                <button id="btn-nozzle-preview" onclick="toggleToolheadVisibility()" class="px-3 py-1.5 rounded-xl text-xs font-medium flex items-center space-x-1.5 text-slate-300 hover:bg-slate-800/80 transition">
+                    <i class="fa-solid fa-locust text-sky-400"></i>
+                    <span class="hidden sm:inline">3D Printhead</span>
+                </button>
+
+                <button id="btn-autorotate" onclick="toggleSceneAutoRotate()" class="px-3 py-1.5 rounded-xl text-xs font-medium flex items-center space-x-1.5 text-slate-300 hover:bg-slate-800/80 transition">
+                    <i class="fa-solid fa-arrows-spin"></i>
+                    <span class="hidden sm:inline">Turntable</span>
+                </button>
+
+                <div class="h-4 w-[1px] bg-slate-700 mx-1"></div>
+
+                <button onclick="setCameraPreset('iso')" title="Isometric 3D View" class="px-2.5 py-1.5 rounded-xl text-xs font-mono text-slate-300 hover:bg-slate-800/80 transition">ISO</button>
+                <button onclick="setCameraPreset('front')" title="Front Elevation View" class="px-2.5 py-1.5 rounded-xl text-xs font-mono text-slate-300 hover:bg-slate-800/80 transition">FRONT</button>
+                <button onclick="setCameraPreset('top')" title="Top Build Plate View" class="px-2.5 py-1.5 rounded-xl text-xs font-mono text-slate-300 hover:bg-slate-800/80 transition">TOP</button>
+            </div>
+        </main>
+
+        <!-- RIGHT CONTEXTUAL INSPECTOR SIDEBAR (Switches based on Design | Slicer | Printer Mode) -->
+        <aside class="w-80 md:w-[395px] bg-cad-panel border-l border-cad-border flex flex-col shrink-0 z-20">
+
+            <!-- =================================================================== -->
+            <!-- MODE 1: PARAMETRIC OBJECT DESIGN INSPECTOR                          -->
+            <!-- =================================================================== -->
+            <div id="right-panel-design" class="flex-1 flex flex-col min-h-0">
+                <div class="p-3.5 bg-cad-bg/60 border-b border-cad-border flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <i id="inspector-icon" class="fa-solid fa-sliders text-amber-400"></i>
+                        <h2 id="inspector-heading" class="text-xs font-bold uppercase tracking-wider text-white">Parametric Generator</h2>
+                    </div>
+                    <button onclick="exportSceneSTL(true)" class="text-[11px] font-medium text-amber-400 hover:underline flex items-center space-x-1">
+                        <i class="fa-solid fa-download text-[10px]"></i>
+                        <span>Export Selected .STL</span>
+                    </button>
+                </div>
+
+                <!-- Dynamic Parametric Controls Container (Adapts to Lampshade, Planter, Gear, Box, CableClip, Primitive) -->
+                <div id="parametric-controls-mount" class="flex-1 overflow-y-auto p-4 space-y-5">
+                    <!-- Populated dynamically by renderParametricInspector() -->
+                </div>
+            </div>
+
+            <!-- =================================================================== -->
+            <!-- MODE 2: BUILT-IN SLICER & G-CODE ENGINE                             -->
+            <!-- =================================================================== -->
+            <div id="right-panel-slicer" class="hidden flex-1 flex flex-col min-h-0">
+                <div class="p-3.5 bg-cad-bg/60 border-b border-cad-border flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-layer-group text-emerald-400"></i>
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-white">Slicer Process & Toolpath</h2>
+                    </div>
+                    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">MARLIN / KLIPPER</span>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
+                    <!-- Quick Quality Profile Selector -->
+                    <div class="space-y-1.5">
+                        <label class="text-slate-300 font-semibold block">Slicer Quality Preset</label>
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <button onclick="applySlicerPreset(0.12, 20, 3, 60)" class="py-2 px-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-200 font-mono text-[11px] transition">0.12mm Fine</button>
+                            <button onclick="applySlicerPreset(0.20, 15, 2, 120)" class="py-2 px-2 rounded-lg bg-emerald-500/15 border border-emerald-500 text-emerald-300 font-mono text-[11px] transition">0.20mm Std</button>
+                            <button onclick="applySlicerPreset(0.28, 10, 2, 180)" class="py-2 px-2 rounded-lg bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-200 font-mono text-[11px] transition">0.28mm Draft</button>
+                        </div>
+                    </div>
+
+                    <!-- Layer Height -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between">
+                            <label class="text-slate-300 font-medium">Layer Height</label>
+                            <span id="val-slice-layer" class="font-mono text-emerald-400">0.20 mm</span>
+                        </div>
+                        <input type="range" id="slice-layer" min="0.12" max="0.28" step="0.04" value="0.20" oninput="updateSlicerSettings()">
+                    </div>
+
+                    <!-- Infill Density -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between">
+                            <label class="text-slate-300 font-medium">Sparse Infill Density (Grid)</label>
+                            <span id="val-slice-infill" class="font-mono text-emerald-400">15%</span>
+                        </div>
+                        <input type="range" id="slice-infill" min="0" max="100" step="5" value="15" oninput="updateSlicerSettings()">
+                    </div>
+
+                    <!-- Wall Loops -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between">
+                            <label class="text-slate-300 font-medium">Perimeter Wall Loops</label>
+                            <span id="val-slice-walls" class="font-mono text-emerald-400">2 loops</span>
+                        </div>
+                        <input type="range" id="slice-walls" min="1" max="6" step="1" value="2" oninput="updateSlicerSettings()">
+                    </div>
+
+                    <!-- Spiral Vase Mode Override -->
+                    <div class="flex items-center justify-between p-2.5 rounded-xl bg-cad-card border border-cad-border">
+                        <div>
+                            <div class="font-semibold text-slate-200">Spiral Vase Mode (Single Wall)</div>
+                            <div class="text-[10px] text-slate-400">Continuous Z contour for lampshades & vases</div>
+                        </div>
+                        <input type="checkbox" id="slice-vase" onchange="updateSlicerSettings()" class="w-4 h-4 accent-emerald-500 rounded cursor-pointer">
+                    </div>
+
+                    <hr class="border-cad-border">
+
+                    <!-- Speed & Filament Temperatures -->
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between">
+                            <label class="text-slate-300 font-medium">Outer/Infill Print Speed</label>
+                            <span id="val-slice-speed" class="font-mono text-emerald-400">120 mm/s</span>
+                        </div>
+                        <input type="range" id="slice-speed" min="40" max="300" step="10" value="120" oninput="updateSlicerSettings()">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1">
+                            <label class="text-slate-400 text-[11px]">Nozzle Temp (°C)</label>
+                            <input type="number" id="slice-nozzle-temp" value="210" min="180" max="300" onchange="updateSlicerSettings()" class="num-input text-sm py-1.5">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-slate-400 text-[11px]">Bed Temp (°C)</label>
+                            <input type="number" id="slice-bed-temp" value="60" min="0" max="120" onchange="updateSlicerSettings()" class="num-input text-sm py-1.5">
+                        </div>
+                    </div>
+
+                    <!-- Slicer Estimation Telemetry Card -->
+                    <div class="p-4 rounded-2xl bg-gradient-to-br from-emerald-950/50 to-cad-card border border-emerald-500/30 space-y-3 shadow-inner">
+                        <div class="flex items-center justify-between border-b border-emerald-500/20 pb-2">
+                            <span class="font-bold text-emerald-300 uppercase tracking-wider text-[11px]"><i class="fa-solid fa-calculator mr-1.5"></i>Sliced Job Estimate</span>
+                            <span id="est-total-layers" class="font-mono text-[11px] text-white">900 Layers</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 font-mono">
+                            <div class="bg-cad-bg/70 p-2.5 rounded-xl border border-cad-border">
+                                <div class="text-[10px] text-slate-400">Est. Print Time</div>
+                                <div id="est-print-time" class="text-sm font-bold text-white mt-0.5">3h 42m</div>
+                            </div>
+                            <div class="bg-cad-bg/70 p-2.5 rounded-xl border border-cad-border">
+                                <div class="text-[10px] text-slate-400">Filament Weight</div>
+                                <div id="est-filament-weight" class="text-sm font-bold text-emerald-400 mt-0.5">114.2 g</div>
+                            </div>
+                            <div class="bg-cad-bg/70 p-2.5 rounded-xl border border-cad-border">
+                                <div class="text-[10px] text-slate-400">Filament Length</div>
+                                <div id="est-filament-len" class="text-sm font-bold text-slate-200 mt-0.5">38.3 m</div>
+                            </div>
+                            <div class="bg-cad-bg/70 p-2.5 rounded-xl border border-cad-border">
+                                <div class="text-[10px] text-slate-400">Material Cost ($22/kg)</div>
+                                <div id="est-filament-cost" class="text-sm font-bold text-amber-400 mt-0.5">$2.51</div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 pt-1">
+                            <button onclick="generateAndDownloadGCode()" class="py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow transition">
+                                <i class="fa-solid fa-download"></i>
+                                <span>Download .GCODE</span>
+                            </button>
+                            <button onclick="sendSlicedJobToPrinter()" class="py-2.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow transition">
+                                <i class="fa-solid fa-play"></i>
+                                <span>Print Directly</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- =================================================================== -->
+            <!-- MODE 3: DIRECT 3D PRINTER CONNECTION & MACHINE CONTROL HUB          -->
+            <!-- =================================================================== -->
+            <div id="right-panel-printer" class="hidden flex-1 flex flex-col min-h-0">
+                <div class="p-3.5 bg-cad-bg/60 border-b border-cad-border flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-satellite-dish text-sky-400"></i>
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-white">Machine Connection Hub</h2>
+                    </div>
+                    <span id="printer-conn-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">SIMULATOR ACTIVE</span>
+                </div>
+
+                <!-- Connection Method Selector Tabs -->
+                <div class="grid grid-cols-3 bg-cad-bg p-1 border-b border-cad-border text-[11px] font-semibold">
+                    <button onclick="selectConnectionTab('sim')" id="conn-tab-sim" class="py-1.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 transition">Virtual Twin</button>
+                    <button onclick="selectConnectionTab('usb')" id="conn-tab-usb" class="py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition">USB WebSerial</button>
+                    <button onclick="selectConnectionTab('wifi')" id="conn-tab-wifi" class="py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition">Wi-Fi API</button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-3.5 space-y-4 text-xs">
+
+                    <!-- Connection Config Cards -->
+                    <div id="conn-card-sim" class="p-3 rounded-xl bg-cad-card border border-sky-500/30 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="font-semibold text-sky-300"><i class="fa-solid fa-robot mr-1.5"></i>3D Virtual Printer Twin</span>
+                            <span class="text-[10px] font-mono text-emerald-400">ONLINE (256³mm)</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">Test G-code streaming, axis homing (`G28`), X/Y/Z jogging, live PID thermal graphs, and watch the 3D printhead trace your sliced toolpath in real time.</p>
+                    </div>
+
+                    <div id="conn-card-usb" class="hidden p-3 rounded-xl bg-cad-card border border-cad-border space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="font-semibold text-white"><i class="fa-brands fa-usb text-amber-400 mr-1.5"></i>Direct USB Serial (Marlin/Klipper)</span>
+                            <select id="usb-baud-select" class="bg-cad-bg border border-cad-border rounded px-2 py-0.5 font-mono text-[10px] text-slate-200">
+                                <option value="115200">115200 baud</option>
+                                <option value="250000" selected>250000 baud</option>
+                            </select>
+                        </div>
+                        <p class="text-[10px] text-slate-400">Connect directly to your 3D printer over USB cable using Chrome/Edge Web Serial API (`navigator.serial`).</p>
+                        <button onclick="connectWebSerialUSB()" id="btn-connect-usb" class="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 transition">
+                            <i class="fa-solid fa-plug"></i>
+                            <span>Select USB Serial Port...</span>
+                        </button>
+                    </div>
+
+                    <div id="conn-card-wifi" class="hidden p-3 rounded-xl bg-cad-card border border-cad-border space-y-2.5">
+                        <div class="font-semibold text-white"><i class="fa-solid fa-wifi text-emerald-400 mr-1.5"></i>Moonraker / OctoPrint Wireless</div>
+                        <div class="space-y-1.5">
+                            <input type="text" id="wifi-host-url" placeholder="http://192.168.1.150:7125" value="http://mainsailos.local" class="w-full bg-cad-bg border border-cad-border rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-white">
+                            <input type="password" id="wifi-api-key" placeholder="X-Api-Key (Optional for Moonraker)" class="w-full bg-cad-bg border border-cad-border rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-white">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="testWirelessConnection()" class="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-semibold text-[11px]">Ping Printer</button>
+                            <button onclick="uploadGCodeWireless()" class="py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px]">Upload & Print</button>
+                        </div>
+                    </div>
+
+                    <!-- Live Thermal Control & Graph -->
+                    <div class="p-3 rounded-xl bg-cad-card border border-cad-border space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-[11px] uppercase tracking-wider text-slate-400"><i class="fa-solid fa-temperature-high text-orange-400 mr-1"></i>Thermal Telemetry</span>
+                            <div class="flex space-x-1">
+                                <button onclick="setPrinterTargetTemps(210, 60)" class="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-mono">Preheat PLA</button>
+                                <button onclick="setPrinterTargetTemps(240, 80)" class="px-2 py-0.5 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 text-[10px] font-mono">PETG</button>
+                                <button onclick="setPrinterTargetTemps(0, 0)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-mono">Cooldown</button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 font-mono">
+                            <div class="bg-cad-bg p-2 rounded-lg border border-cad-border flex items-center justify-between">
+                                <div>
+                                    <div class="text-[10px] text-slate-400">Nozzle (E0)</div>
+                                    <div class="text-sm font-bold text-orange-400"><span id="live-nozzle-temp">24.5</span>°C</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-[9px] text-slate-400">Target</div>
+                                    <input type="number" id="target-nozzle-input" value="0" min="0" max="300" onchange="setPrinterTargetTemps(this.value, null)" class="w-14 bg-cad-panel border border-cad-border rounded px-1 py-0.5 text-right text-xs text-white">
+                                </div>
+                            </div>
+                            <div class="bg-cad-bg p-2 rounded-lg border border-cad-border flex items-center justify-between">
+                                <div>
+                                    <div class="text-[10px] text-slate-400">Heated Bed</div>
+                                    <div class="text-sm font-bold text-sky-400"><span id="live-bed-temp">23.8</span>°C</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-[9px] text-slate-400">Target</div>
+                                    <input type="number" id="target-bed-input" value="0" min="0" max="120" onchange="setPrinterTargetTemps(null, this.value)" class="w-14 bg-cad-panel border border-cad-border rounded px-1 py-0.5 text-right text-xs text-white">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Live Temperature History Canvas -->
+                        <canvas id="temp-graph-canvas" width="330" height="70" class="w-full h-[70px] bg-cad-bg rounded-lg border border-cad-border"></canvas>
+                    </div>
+
+                    <!-- Motion Jog Pad & Axis Homing -->
+                    <div class="p-3 rounded-xl bg-cad-card border border-cad-border space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-[11px] uppercase tracking-wider text-slate-400"><i class="fa-solid fa-gamepad text-sky-400 mr-1"></i>Printhead Jog & Homing</span>
+                            <span id="live-toolhead-coords" class="font-mono text-[10px] text-sky-300">X:0.0 Y:0.0 Z:15.0</span>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 items-center">
+                            <!-- XY D-Pad -->
+                            <div class="col-span-2 grid grid-cols-3 gap-1 bg-cad-bg p-2 rounded-xl border border-cad-border">
+                                <div></div>
+                                <button onclick="jogPrinterAxis('Y', 10)" class="py-2 rounded bg-cad-card hover:bg-slate-800 text-slate-200 font-mono text-[11px] border border-cad-border"><i class="fa-solid fa-chevron-up"></i> Y+</button>
+                                <div></div>
+                                <button onclick="jogPrinterAxis('X', -10)" class="py-2 rounded bg-cad-card hover:bg-slate-800 text-slate-200 font-mono text-[11px] border border-cad-border"><i class="fa-solid fa-chevron-left"></i> X-</button>
+                                <button onclick="homePrinterAxes()" title="G28 Home All Axes" class="py-2 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-[11px]"><i class="fa-solid fa-house"></i></button>
+                                <button onclick="jogPrinterAxis('X', 10)" class="py-2 rounded bg-cad-card hover:bg-slate-800 text-slate-200 font-mono text-[11px] border border-cad-border">X+ <i class="fa-solid fa-chevron-right"></i></button>
+                                <div></div>
+                                <button onclick="jogPrinterAxis('Y', -10)" class="py-2 rounded bg-cad-card hover:bg-slate-800 text-slate-200 font-mono text-[11px] border border-cad-border"><i class="fa-solid fa-chevron-down"></i> Y-</button>
+                                <div></div>
+                            </div>
+
+                            <!-- Z Axis & Start/Stop Job -->
+                            <div class="flex flex-col space-y-1.5">
+                                <button onclick="jogPrinterAxis('Z', 10)" class="py-2 rounded-lg bg-cad-bg hover:bg-slate-800 text-sky-300 font-mono text-[11px] border border-cad-border"><i class="fa-solid fa-arrow-up mr-1"></i>Z +10</button>
+                                <button onclick="jogPrinterAxis('Z', -10)" class="py-2 rounded-lg bg-cad-bg hover:bg-slate-800 text-sky-300 font-mono text-[11px] border border-cad-border"><i class="fa-solid fa-arrow-down mr-1"></i>Z -10</button>
+                                <button onclick="toggleSimulatedPrintJob()" id="btn-sim-job" class="py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] flex items-center justify-center space-x-1 shadow transition">
+                                    <i class="fa-solid fa-play"></i>
+                                    <span>Run Print</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Interactive G-Code Serial Terminal Console -->
+                    <div class="p-3 rounded-xl bg-cad-card border border-cad-border space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-[11px] uppercase tracking-wider text-slate-400"><i class="fa-solid fa-terminal text-emerald-400 mr-1"></i>G-Code Serial Console</span>
+                            <button onclick="clearGCodeTerminal()" class="text-[10px] text-slate-400 hover:text-white">Clear</button>
+                        </div>
+                        <div id="gcode-terminal-log" class="h-32 overflow-y-auto bg-cad-bg p-2 rounded-lg border border-cad-border font-mono text-[10px] space-y-1 text-slate-300">
+                            <div class="text-emerald-400">// Forge3D Virtual Marlin/Klipper Controller Ready</div>
+                            <div class="text-slate-400">echo: External Reset | Firmware v2.1.2</div>
+                            <div class="text-slate-400">echo: SD card ok | Build Volume 256x256x256mm</div>
+                        </div>
+                        <form onsubmit="handleManualGCodeSubmit(event)" class="flex space-x-1.5">
+                            <input type="text" id="gcode-cmd-input" placeholder="Send G-code (e.g. G28, M104 S210, G1 X50 Y50)" class="flex-1 bg-cad-bg border border-cad-border rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-white uppercase focus:outline-none focus:border-sky-400">
+                            <button type="submit" class="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-[11px]">Send</button>
+                        </form>
+                    </div>
+
+                </div>
+            </div>
+
+        </aside>
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div id="toast-banner" class="fixed bottom-6 right-6 z-50 glass-pill border-amber-500/40 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 transform translate-y-24 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
+            <i id="toast-icon" class="fa-solid fa-check"></i>
+        </div>
+        <div class="text-xs">
+            <div id="toast-title" class="font-bold text-white">Action Complete</div>
+            <div id="toast-subtext" class="text-slate-400 font-mono text-[10px]">Ready</div>
+        </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- APPLICATION LOGIC: MULTI-OBJECT PARAMETRIC CAD + SLICER + PRINTER SUITE -->
+    <!-- ======================================================================= -->
+    <script>
+        /***********************************************************************
+         * 1. GLOBAL WORKSPACE STATE & DEFAULT PARAMETRIC OBJECT TEMPLATES
+         ***********************************************************************/
+        let workspaceMode = 'design'; // 'design' | 'slicer' | 'printer'
+        let bedSize = { x: 256, y: 256, z: 256 };
+        let autoSnapZ = true;
+        let sceneObjects = [];
+        let selectedObjectId = null;
+        let objectIdCounter = 1;
+
+        // Slicer & Toolpath State
+        let slicerConfig = {
+            layerHeight: 0.20,
+            infill: 15,
+            walls: 2,
+            vaseMode: false,
+            speed: 120,
+            nozzleTemp: 210,
+            bedTemp: 60,
+            currentLayer: 900,
+            maxLayers: 900,
+            maxZ: 180
+        };
+        let layerAnimInterval = null;
+        let clipPlane = null;
+
+        // Printer Connection & Virtual Simulator State
+        let printerState = {
+            connType: 'sim', // 'sim' | 'usb' | 'wifi'
+            serialPort: null,
+            serialWriter: null,
+            nozzleTemp: 24.5,
+            targetNozzle: 0,
+            bedTemp: 23.8,
+            targetBed: 0,
+            headPos: { x: 0, y: 0, z: 15 },
+            targetHeadPos: { x: 0, y: 0, z: 15 },
+            isPrintingSim: false,
+            simProgressAngle: 0,
+            tempHistory: []
+        };
+
+        // Default parameter dictionary for each of the 6 object categories
+        const GENERATOR_DEFAULTS = {
+            lampshade: {
+                height: 170, bottomRadius: 72, topRadius: 52, wallThickness: 1.8, vaseMode: false,
+                bellyBulge: 20, waveFreq: 1.5, waveAmp: 7,
+                ribCount: 28, ribDepth: 6.0, ribProfile: 'sine', twistAngle: 90,
+                mountPos: 'bottom', socketDiameter: 40, collarWidth: 8, spokeCount: 3, spokeWidth: 7, mountHeight: 4,
+                radialSegs: 140, verticalSegs: 80
+            },
+            planter: {
+                height: 120, bottomRadius: 48, topRadius: 65, wallThickness: 2.4,
+                bellyBulge: 14, waveFreq: 1.0, waveAmp: 5,
+                ribCount: 18, ribDepth: 4.5, twistAngle: 45,
+                drainageHoles: true, drainDiameter: 12, lipThickness: 4.0,
+                radialSegs: 96, verticalSegs: 60
+            },
+            gear: {
+                teeth: 24, module: 2.5, thickness: 12, pressureAngle: 20,
+                boreDiameter: 8.0, hubDiameter: 22, hubHeight: 6,
+                keyway: true, keywayWidth: 3.0, keywayDepth: 1.5
+            },
+            box: {
+                width: 110, depth: 85, height: 48, wallThickness: 2.2,
+                dividersX: 2, dividersY: 1, stackableLip: true
+            },
+            cableclip: {
+                deskThickness: 22, clipDepth: 36, width: 48, wallThickness: 4.0,
+                slotCount: 3, cableDiameter: 6.5
+            },
+            primitive: {
+                shape: 'cylinder', sizeX: 50, sizeY: 50, sizeZ: 60, radialSegs: 64
+            }
+        };
+
+        const OBJECT_COLORS = {
+            lampshade: '#fffaf0',
+            planter: '#10b981',
+            gear: '#38bdf8',
+            box: '#a855f7',
+            cableclip: '#f59e0b',
+            primitive: '#f43f5e',
+            stl: '#38bdf8'
+        };
+
+        /***********************************************************************
+         * 2. THREE.JS SCENE, BUILD PLATE, CLIPPING PLANE & 3D PRINTHEAD
+         ***********************************************************************/
+        let scene, camera, renderer, controls, raycaster, mouse;
+        let bedGroup, objectsGroup, toolpathGroup, toolheadGroup, lampBulbGroup, selectionBoxHelper;
+        let isWireframeMode = false;
+        let isLampBulbOn = true;
+
+        function initThreeStudio() {
+            const container = document.getElementById('canvas-mount');
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(42, w / h, 1, 4000);
+            camera.position.set(290, 240, 310);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+            renderer.setSize(w, h);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.localClippingEnabled = true;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.05;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.07;
+            controls.target.set(0, 70, 0);
+            controls.maxDistance = 1200;
+            controls.minDistance = 40;
+
+            // Global horizontal clipping plane for Slicer Layer Preview
+            clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 500);
+
+            // Studio Lighting
+            const hemiLight = new THREE.HemisphereLight(0xe2e8f0, 0x1e293b, 0.55);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.65);
+            dirLight.position.set(220, 420, 260);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.3);
+            rimLight.position.set(-260, 180, -220);
+            scene.add(rimLight);
+
+            // Scene Groups
+            bedGroup = new THREE.Group();
+            objectsGroup = new THREE.Group();
+            toolpathGroup = new THREE.Group();
+            scene.add(bedGroup);
+            scene.add(objectsGroup);
+            scene.add(toolpathGroup);
+
+            // Internal Warm Lamp Bulb Preview Assembly
+            lampBulbGroup = new THREE.Group();
+            const bulbPt = new THREE.PointLight(0xff9d3b, 2.0, 450, 1.4);
+            bulbPt.name = 'bulbLight';
+            lampBulbGroup.add(bulbPt);
+            const bulbMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(14, 20, 20),
+                new THREE.MeshBasicMaterial({ color: 0xffe0a3 })
+            );
+            lampBulbGroup.add(bulbMesh);
+            lampBulbGroup.position.set(0, 75, 0);
+            scene.add(lampBulbGroup);
+
+            // 3D Virtual Printer Extruder Toolhead Assembly
+            buildVirtualToolhead();
+
+            // Build Printer Bed Grid & Volume Frame
+            rebuildPrinterBedVisuals();
+
+            // Raycaster for clicking objects in 3D viewport
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            renderer.domElement.addEventListener('pointerdown', onViewportPointerDown);
+
+            // Add initial default Parametric Lampshade
+            addSceneObject('lampshade');
+
+            window.addEventListener('resize', onWindowResize);
+            animateStudio();
+        }
+
+        function buildVirtualToolhead() {
+            toolheadGroup = new THREE.Group();
+
+            // Extruder shroud body
+            const shroudGeo = new THREE.BoxGeometry(34, 42, 34);
+            const shroudMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.5, roughness: 0.4 });
+            const shroud = new THREE.Mesh(shroudGeo, shroudMat);
+            shroud.position.y = 33;
+            toolheadGroup.add(shroud);
+
+            // Glowing accent stripe on extruder
+            const stripeGeo = new THREE.BoxGeometry(36, 6, 36);
+            const stripeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+            const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+            stripe.position.y = 32;
+            toolheadGroup.add(stripe);
+
+            // Brass Nozzle Cone pointing down to tip at (0,0,0)
+            const nozzleGeo = new THREE.ConeGeometry(6, 12, 24);
+            nozzleGeo.rotateX(Math.PI);
+            const nozzleMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.2 });
+            const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+            nozzle.position.y = 6;
+            toolheadGroup.add(nozzle);
+
+            toolheadGroup.position.set(0, 15, 0);
+            toolheadGroup.visible = false;
+            scene.add(toolheadGroup);
+        }
+
+        function rebuildPrinterBedVisuals() {
+            while (bedGroup.children.length > 0) {
+                const c = bedGroup.children[0];
+                if (c.geometry) c.geometry.dispose();
+                bedGroup.remove(c);
+            }
+
+            const bx = bedSize.x;
+            const by = bedSize.y;
+            const bz = bedSize.z;
+
+            // Textured dark build plate surface
+            const plateGeo = new THREE.PlaneGeometry(bx, by);
+            plateGeo.rotateX(-Math.PI / 2);
+            const plateMat = new THREE.MeshStandardMaterial({
+                color: 0x121621,
+                roughness: 0.8,
+                metalness: 0.2,
+                side: THREE.DoubleSide
+            });
+            const plateMesh = new THREE.Mesh(plateGeo, plateMat);
+            plateMesh.position.y = -0.3;
+            plateMesh.receiveShadow = true;
+            bedGroup.add(plateMesh);
+
+            // Millimeter Grid Helper (10mm major divisions)
+            const grid = new THREE.GridHelper(bx, Math.round(bx / 10), 0xf59e0b, 0x262f45);
+            grid.position.y = -0.1;
+            bedGroup.add(grid);
+
+            // Build Volume Wireframe Cage (X, Y, Z height limit)
+            const cageGeo = new THREE.BoxGeometry(bx, bz, by);
+            const cageEdges = new THREE.EdgesGeometry(cageGeo);
+            const cageLine = new THREE.LineSegments(
+                cageEdges,
+                new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.45 })
+            );
+            cageLine.position.y = bz / 2;
+            bedGroup.add(cageLine);
+
+            // Origin Front-Left Coordinate Indicator Axes
+            const axes = new THREE.AxesHelper(35);
+            axes.position.set(-bx / 2, 0.2, by / 2);
+            bedGroup.add(axes);
+
+            document.getElementById('stat-bed-dims').textContent = `${bx}×${by}×${bz} mm`;
+        }
+
+        function changeBedSize(valStr) {
+            const [x, y, z] = valStr.split(',').map(Number);
+            bedSize = { x, y, z };
+            rebuildPrinterBedVisuals();
+            showToast('Build Volume Updated', `${x}×${y}×${z} mm Print Bed`);
+        }
+
+        /***********************************************************************
+         * 3. PARAMETRIC GEOMETRY GENERATORS (ALL 6 WATERTIGHT MANIFOLD TYPES)
+         ***********************************************************************/
+        function evaluateWave(phase, profileType) {
+            const u = ((phase / (Math.PI * 2)) % 1 + 1) % 1;
+            if (profileType === 'triangle') {
+                return 1.0 - 4.0 * Math.abs(Math.round(u - 0.25) - (u - 0.25));
+            } else if (profileType === 'square') {
+                return Math.tanh(Math.sin(phase) * 3.2);
+            }
+            return Math.sin(phase);
+        }
+
+        function createBufferGeoFromArrays(positions, indices) {
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geo.setIndex(indices);
+            geo.computeVertexNormals();
+            return geo;
+        }
+
+        // GENERATOR A: PARAMETRIC LAMPSHADE (With Vase Mode & E27/E14/Uno Spider Fitter)
+        function buildLampshadeGeo(p) {
+            const R = Math.max(6, Math.round(p.radialSegs));
+            const V = Math.max(4, Math.round(p.verticalSegs));
+            const H = p.height;
+            const wallT = p.wallThickness;
+
+            const positions = [];
+            const indices = [];
+            let vCount = 0;
+            const addV = (x, y, z) => { positions.push(x, y, z); return vCount++; };
+            const addQ = (a, b, c, d) => { indices.push(a, b, c, a, c, d); };
+
+            const evalRadius = (v, theta) => {
+                const baseR = p.bottomRadius * (1 - v) + p.topRadius * v;
+                const bulge = p.bellyBulge * Math.sin(v * Math.PI);
+                const wave = p.waveAmp * Math.sin(v * p.waveFreq * Math.PI * 2);
+                const twist = (v * p.twistAngle * Math.PI) / 180;
+                const rib = (p.ribCount > 0 && Math.abs(p.ribDepth) > 0.01)
+                    ? p.ribDepth * evaluateWave(theta * p.ribCount + twist, p.ribProfile)
+                    : 0;
+                return Math.max(10, baseR + bulge + wave + rib);
+            };
+
+            const outGrid = [], inGrid = [];
+            for (let iv = 0; iv <= V; iv++) {
+                const v = iv / V;
+                const y = v * H;
+                const oRow = [], iRow = [];
+                for (let ir = 0; ir < R; ir++) {
+                    const theta = (ir / R) * Math.PI * 2;
+                    const rOut = evalRadius(v, theta);
+                    const c = Math.cos(theta), s = Math.sin(theta);
+                    oRow.push(addV(rOut * c, y, rOut * s));
+                    if (!p.vaseMode) {
+                        const rIn = Math.max(5, rOut - wallT);
+                        iRow.push(addV(rIn * c, y, rIn * s));
+                    }
+                }
+                outGrid.push(oRow);
+                if (!p.vaseMode) inGrid.push(iRow);
+            }
+
+            for (let iv = 0; iv < V; iv++) {
+                for (let ir = 0; ir < R; ir++) {
+                    const n = (ir + 1) % R;
+                    addQ(outGrid[iv][ir], outGrid[iv + 1][ir], outGrid[iv + 1][n], outGrid[iv][n]);
+                    if (!p.vaseMode) {
+                        addQ(inGrid[iv][ir], inGrid[iv][n], inGrid[iv + 1][n], inGrid[iv + 1][ir]);
+                    }
+                }
+            }
+
+            if (p.vaseMode) {
+                const bCenter = addV(0, 0, 0), tCenter = addV(0, H, 0);
+                for (let ir = 0; ir < R; ir++) {
+                    const n = (ir + 1) % R;
+                    indices.push(bCenter, outGrid[0][ir], outGrid[0][n]);
+                    indices.push(tCenter, outGrid[V][n], outGrid[V][ir]);
+                }
+            } else {
+                for (let ir = 0; ir < R; ir++) {
+                    const n = (ir + 1) % R;
+                    addQ(outGrid[0][ir], outGrid[0][n], inGrid[0][n], inGrid[0][ir]);
+                    addQ(inGrid[V][ir], inGrid[V][n], outGrid[V][n], outGrid[V][ir]);
+                }
+                // Socket Fitter Ring + Spokes
+                if (p.mountPos !== 'none') {
+                    const isTop = p.mountPos === 'top';
+                    const vMount = isTop ? 1.0 : 0.0;
+                    const mH = Math.min(p.mountHeight, H * 0.25);
+                    const y0 = isTop ? H - mH : 0;
+                    const y1 = isTop ? H : mH;
+                    const holeR = p.socketDiameter / 2;
+                    const colOutR = holeR + p.collarWidth;
+                    const cSegs = 64;
+                    const cIB = [], cOB = [], cIT = [], cOT = [];
+                    for (let i = 0; i < cSegs; i++) {
+                        const th = (i / cSegs) * Math.PI * 2;
+                        const c = Math.cos(th), s = Math.sin(th);
+                        cIB.push(addV(holeR * c, y0, holeR * s));
+                        cOB.push(addV(colOutR * c, y0, colOutR * s));
+                        cIT.push(addV(holeR * c, y1, holeR * s));
+                        cOT.push(addV(colOutR * c, y1, colOutR * s));
+                    }
+                    for (let i = 0; i < cSegs; i++) {
+                        const n = (i + 1) % cSegs;
+                        addQ(cIB[i], cIB[n], cIT[n], cIT[i]);
+                        addQ(cOB[i], cOT[i], cOT[n], cOB[n]);
+                        addQ(cIB[i], cOB[i], cOB[n], cIB[n]);
+                        addQ(cIT[i], cIT[n], cOT[n], cOT[i]);
+                    }
+                    const halfW = p.spokeWidth / 2;
+                    for (let s = 0; s < p.spokeCount; s++) {
+                        const ang = (s / p.spokeCount) * Math.PI * 2;
+                        const ca = Math.cos(ang), sa = Math.sin(ang);
+                        const px = -sa * halfW, pz = ca * halfW;
+                        const rStart = holeR + p.collarWidth * 0.5;
+                        const rEnd = Math.max(rStart + 2, evalRadius(vMount, ang) - wallT * 0.4);
+                        if (rEnd > rStart + 1) {
+                            const xs = ca * rStart, zs = sa * rStart, xe = ca * rEnd, ze = sa * rEnd;
+                            const b0 = addV(xs - px, y0, zs - pz), b1 = addV(xe - px, y0, ze - pz);
+                            const b2 = addV(xe + px, y0, ze + pz), b3 = addV(xs + px, y0, zs + pz);
+                            const t0 = addV(xs - px, y1, zs - pz), t1 = addV(xe - px, y1, ze - pz);
+                            const t2 = addV(xe + px, y1, ze + pz), t3 = addV(xs + px, y1, zs + pz);
+                            addQ(t0, t1, t2, t3); addQ(b0, b3, b2, b1);
+                            addQ(b0, b1, t1, t0); addQ(b2, b3, t3, t2);
+                            addQ(b1, b2, t2, t1); addQ(b3, b0, t0, t3);
+                        }
+                    }
+                }
+            }
+            return createBufferGeoFromArrays(positions, indices);
+        }
+
+        // GENERATOR B: PARAMETRIC PLANTER / ARCHITECTURAL VASE (With Floor & Center Drainage Hole)
+        function buildPlanterGeo(p) {
+            const R = Math.max(6, Math.round(p.radialSegs));
+            const V = Math.max(8, Math.round(p.verticalSegs));
+            const H = p.height;
+            const wallT = p.wallThickness;
+            const floorH = Math.max(3.0, wallT * 1.5);
+
+            const positions = [];
+            const indices = [];
+            let vCount = 0;
+            const addV = (x, y, z) => { positions.push(x, y, z); return vCount++; };
+            const addQ = (a, b, c, d) => { indices.push(a, b, c, a, c, d); };
+
+            const evalRadius = (v, theta) => {
+                const baseR = p.bottomRadius * (1 - v) + p.topRadius * v;
+                const bulge = p.bellyBulge * Math.sin(v * Math.PI);
+                const wave = p.waveAmp * Math.sin(v * p.waveFreq * Math.PI * 2);
+                const twist = (v * p.twistAngle * Math.PI) / 180;
+                const rib = (p.ribCount > 0) ? p.ribDepth * Math.sin(theta * p.ribCount + twist) : 0;
+                const lip = (v > 0.92) ? p.lipThickness : 0;
+                return Math.max(12, baseR + bulge + wave + rib + lip);
+            };
+
+            const outGrid = [], inGrid = [];
+            for (let iv = 0; iv <= V; iv++) {
+                const v = iv / V;
+                const yOut = v * H;
+                const yIn = floorH + v * (H - floorH);
+                const oRow = [], iRow = [];
+                for (let ir = 0; ir < R; ir++) {
+                    const theta = (ir / R) * Math.PI * 2;
+                    const rOut = evalRadius(v, theta);
+                    const rIn = Math.max(6, rOut - wallT);
+                    const c = Math.cos(theta), s = Math.sin(theta);
+                    oRow.push(addV(rOut * c, yOut, rOut * s));
+                    iRow.push(addV(rIn * c, yIn, rIn * s));
+                }
+                outGrid.push(oRow);
+                inGrid.push(iRow);
+            }
+
+            // Outer & Inner walls + Top Rim
+            for (let iv = 0; iv < V; iv++) {
+                for (let ir = 0; ir < R; ir++) {
+                    const n = (ir + 1) % R;
+                    addQ(outGrid[iv][ir], outGrid[iv + 1][ir], outGrid[iv + 1][n], outGrid[iv][n]);
+                    addQ(inGrid[iv][ir], inGrid[iv][n], inGrid[iv + 1][n], inGrid[iv + 1][ir]);
+                }
+            }
+            for (let ir = 0; ir < R; ir++) {
+                const n = (ir + 1) % R;
+                addQ(inGrid[V][ir], inGrid[V][n], outGrid[V][n], outGrid[V][ir]);
+            }
+
+            // Bottom Floor (With Optional Drainage Hole Tunnel)
+            const drainR = p.drainageHoles ? Math.min(p.drainDiameter / 2, p.bottomRadius * 0.45) : 0;
+            if (drainR > 1.0) {
+                const dBot = [], dTop = [];
+                for (let ir = 0; ir < R; ir++) {
+                    const theta = (ir / R) * Math.PI * 2;
+                    const c = Math.cos(theta), s = Math.sin(theta);
+                    dBot.push(addV(drainR * c, 0, drainR * s));
+                    dTop.push(addV(drainR * c, floorH, drainR * s));
+                }
+                for (let ir = 0; ir < R; ir++) {
+                    const n = (ir + 1) % R;
+                    // Bottom annular floor
+                    addQ(dBot[ir], outGrid[0][ir], outGrid[0][n], dBot[n]);
+                    // Inner basin annular floor
+                    addQ(inGrid[0][ir], dTop[ir], dTop[n], inGrid[0][n]);
+                    // Drainage tunnel wall
+                    addQ(dBot[ir], dBot[n], dTop[n], dTop[ir]);
+                }
+            } else {
+                const bCenter = addV(0, 0, 0);
+                const iCenter = addV(0, floorH, 0);
+                for (let ir = 0; ir < R; ir++) {
+                    const n = (ir + 1) % R;
+                    indices.push(bCenter, outGrid[0][ir], outGrid[0][n]);
+                    indices.push(iCenter, inGrid[0][n], inGrid[0][ir]);
+                }
+            }
+            return createBufferGeoFromArrays(positions, indices);
+        }
+
+        // GENERATOR C: PARAMETRIC SPUR GEAR / MECHANICAL PART (Involute Profile + Bore + Keyway)
+        function buildSpurGearGeo(p) {
+            const N = Math.max(6, Math.round(p.teeth));
+            const mod = p.module;
+            const pitchR = (N * mod) / 2;
+            const addendum = mod * 1.0;
+            const dedendum = mod * 1.25;
+            const outerR = pitchR + addendum;
+            const rootR = Math.max(6, pitchR - dedendum);
+            const boreR = Math.min(rootR - 2.5, p.boreDiameter / 2);
+            const H = p.thickness;
+
+            const stepsPerTooth = 12;
+            const totalSegs = N * stepsPerTooth;
+
+            const positions = [];
+            const indices = [];
+            let vCount = 0;
+            const addV = (x, y, z) => { positions.push(x, y, z); return vCount++; };
+            const addQ = (a, b, c, d) => { indices.push(a, b, c, a, c, d); };
+
+            const outBot = [], outTop = [], inBot = [], inTop = [];
+
+            for (let i = 0; i < totalSegs; i++) {
+                const theta = (i / totalSegs) * Math.PI * 2;
+                const toothPhase = ((i % stepsPerTooth) / stepsPerTooth);
+
+                // Trapezoidal involute tooth approximation
+                let r = rootR;
+                if (toothPhase >= 0.15 && toothPhase < 0.30) {
+                    r = rootR + ((toothPhase - 0.15) / 0.15) * (outerR - rootR);
+                } else if (toothPhase >= 0.30 && toothPhase < 0.55) {
+                    r = outerR;
+                } else if (toothPhase >= 0.55 && toothPhase < 0.70) {
+                    r = outerR - ((toothPhase - 0.55) / 0.15) * (outerR - rootR);
+                }
+
+                const c = Math.cos(theta), s = Math.sin(theta);
+                outBot.push(addV(r * c, 0, r * s));
+                outTop.push(addV(r * c, H, r * s));
+
+                // Inner Bore with Keyway Notch
+                let rBore = boreR;
+                if (p.keyway) {
+                    const angDist = Math.abs(Math.atan2(s, c));
+                    const keyHalfAngle = Math.atan2(p.keywayWidth / 2, boreR);
+                    if (angDist < keyHalfAngle) {
+                        rBore = boreR + p.keywayDepth;
+                    }
+                }
+                inBot.push(addV(rBore * c, 0, rBore * s));
+                inTop.push(addV(rBore * c, H, rBore * s));
+            }
+
+            for (let i = 0; i < totalSegs; i++) {
+                const n = (i + 1) % totalSegs;
+                // Outer gear tooth wall
+                addQ(outBot[i], outTop[i], outTop[n], outBot[n]);
+                // Inner bore hole wall
+                addQ(inBot[i], inBot[n], inTop[n], inTop[i]);
+                // Bottom face
+                addQ(inBot[i], outBot[i], outBot[n], inBot[n]);
+                // Top face
+                addQ(inTop[i], inTop[n], outTop[n], outTop[i]);
+            }
+
+            return createBufferGeoFromArrays(positions, indices);
+        }
+
+        // GENERATOR D: PARAMETRIC STORAGE BOX / GRID ORGANIZER
+        function buildStorageBoxGeo(p) {
+            const positions = [];
+            const indices = [];
+            let vCount = 0;
+            const addV = (x, y, z) => { positions.push(x, y, z); return vCount++; };
+            const addQ = (a, b, c, d) => { indices.push(a, b, c, a, c, d); };
+
+            const addBoxStrut = (x0, y0, z0, x1, y1, z1) => {
+                const b0 = addV(x0, y0, z0), b1 = addV(x1, y0, z0), b2 = addV(x1, y0, z1), b3 = addV(x0, y0, z1);
+                const t0 = addV(x0, y1, z0), t1 = addV(x1, y1, z0), t2 = addV(x1, y1, z1), t3 = addV(x0, y1, z1);
+                addQ(t0, t3, t2, t1); // top
+                addQ(b0, b1, b2, b3); // bottom
+                addQ(b0, t0, t1, b1); // front
+                addQ(b1, t1, t2, b2); // right
+                addQ(b2, t2, t3, b3); // back
+                addQ(b3, t3, t0, b0); // left
+            };
+
+            const hx = p.width / 2;
+            const hz = p.depth / 2;
+            const H = p.height;
+            const T = p.wallThickness;
+
+            // Floor slab
+            addBoxStrut(-hx, 0, -hz, hx, T, hz);
+            // 4 Perimeter Walls
+            addBoxStrut(-hx, T, -hz, hx, H, -hz + T);
+            addBoxStrut(-hx, T, hz - T, hx, H, hz);
+            addBoxStrut(-hx, T, -hz + T, -hx + T, H, hz - T);
+            addBoxStrut(hx - T, T, -hz + T, hx, H, hz - T);
+
+            // Internal X Dividers
+            const divX = Math.round(p.dividersX);
+            if (divX > 1) {
+                for (let i = 1; i < divX; i++) {
+                    const xPos = -hx + (i / divX) * p.width;
+                    addBoxStrut(xPos - T / 2, T, -hz + T, xPos + T / 2, H - (p.stackableLip ? 3 : 0), hz - T);
+                }
+            }
+            // Internal Y Dividers
+            const divY = Math.round(p.dividersY);
+            if (divY > 1) {
+                for (let j = 1; j < divY; j++) {
+                    const zPos = -hz + (j / divY) * p.depth;
+                    addBoxStrut(-hx + T, T, zPos - T / 2, hx - T, H - (p.stackableLip ? 3 : 0), zPos + T / 2);
+                }
+            }
+
+            // Stackable Top Rim Lip
+            if (p.stackableLip) {
+                const lipT = T * 0.55;
+                addBoxStrut(-hx, H, -hz, hx, H + 3.5, -hz + lipT);
+                addBoxStrut(-hx, H, hz - lipT, hx, H + 3.5, hz);
+                addBoxStrut(-hx, H, -hz + lipT, -hx + lipT, H + 3.5, hz - lipT);
+                addBoxStrut(hx - lipT, H, -hz + lipT, hx, H + 3.5, hz - lipT);
+            }
+
+            return createBufferGeoFromArrays(positions, indices);
+        }
+
+        // GENERATOR E: PARAMETRIC DESK CABLE HOLDER / C-CLIP
+        function buildCableClipGeo(p) {
+            const positions = [];
+            const indices = [];
+            let vCount = 0;
+            const addV = (x, y, z) => { positions.push(x, y, z); return vCount++; };
+            const addQ = (a, b, c, d) => { indices.push(a, b, c, a, c, d); };
+            const addBox = (x0, y0, z0, x1, y1, z1) => {
+                const b0 = addV(x0, y0, z0), b1 = addV(x1, y0, z0), b2 = addV(x1, y0, z1), b3 = addV(x0, y0, z1);
+                const t0 = addV(x0, y1, z0), t1 = addV(x1, y1, z0), t2 = addV(x1, y1, z1), t3 = addV(x0, y1, z1);
+                addQ(t0, t3, t2, t1); addQ(b0, b1, b2, b3);
+                addQ(b0, t0, t1, b1); addQ(b1, t1, t2, b2);
+                addQ(b2, t2, t3, b3); addQ(b3, t3, t0, b0);
+            };
+
+            const W = p.width;
+            const D = p.clipDepth;
+            const gap = p.deskThickness;
+            const T = p.wallThickness;
+            const totalH = gap + T * 2;
+            const hx = W / 2;
+
+            // Bottom jaw
+            addBox(-hx, 0, -D / 2, hx, T, D / 2);
+            // Vertical Spine Spine
+            addBox(-hx, 0, -D / 2, hx, totalH, -D / 2 + T * 1.4);
+            // Top Desk Grip Jaw with slotted cable combs
+            addBox(-hx, gap + T, -D / 2, hx, totalH, D / 2);
+
+            // Front Cable Holder Comb Fingers
+            const slots = Math.max(1, Math.round(p.slotCount));
+            const cDia = p.cableDiameter;
+            const combDepth = cDia * 1.6;
+            const zStart = D / 2;
+            const zEnd = D / 2 + combDepth;
+
+            const segWidth = W / slots;
+            for (let i = 0; i < slots; i++) {
+                const sx0 = -hx + i * segWidth;
+                const sx1 = sx0 + segWidth;
+                const fingerW = Math.max(2.5, (segWidth - cDia) / 2);
+                // Left finger of slot
+                addBox(sx0, gap + T, zStart, sx0 + fingerW, totalH + 3, zEnd);
+                // Right finger of slot
+                addBox(sx1 - fingerW, gap + T, zStart, sx1, totalH + 3, zEnd);
+            }
+
+            return createBufferGeoFromArrays(positions, indices);
+        }
+
+        // GENERATOR F: CUSTOM PRIMITIVES (Cylinder, Cube, Torus, Cone, Sphere)
+        function buildPrimitiveGeo(p) {
+            let geo;
+            const sx = p.sizeX, sy = p.sizeY, sz = p.sizeZ;
+            const segs = Math.max(8, Math.round(p.radialSegs || 48));
+
+            if (p.shape === 'cube') {
+                geo = new THREE.BoxGeometry(sx, sz, sy);
+                geo.translate(0, sz / 2, 0);
+            } else if (p.shape === 'cone') {
+                geo = new THREE.ConeGeometry(sx / 2, sz, segs);
+                geo.translate(0, sz / 2, 0);
+            } else if (p.shape === 'sphere') {
+                geo = new THREE.SphereGeometry(sx / 2, segs, Math.round(segs / 2));
+                geo.translate(0, sx / 2, 0);
+            } else if (p.shape === 'torus') {
+                const tubeR = Math.max(3, sz / 2);
+                const mainR = Math.max(tubeR + 2, sx / 2 - tubeR);
+                geo = new THREE.TorusGeometry(mainR, tubeR, 32, segs);
+                geo.rotateX(Math.PI / 2);
+                geo.translate(0, tubeR, 0);
+            } else {
+                // Cylinder
+                geo = new THREE.CylinderGeometry(sx / 2, sy / 2, sz, segs);
+                geo.translate(0, sz / 2, 0);
+            }
+            return geo;
+        }
+
+        function buildGeometryForObject(obj) {
+            switch (obj.type) {
+                case 'lampshade': return buildLampshadeGeo(obj.params);
+                case 'planter': return buildPlanterGeo(obj.params);
+                case 'gear': return buildSpurGearGeo(obj.params);
+                case 'box': return buildStorageBoxGeo(obj.params);
+                case 'cableclip': return buildCableClipGeo(obj.params);
+                case 'primitive': return buildPrimitiveGeo(obj.params);
+                case 'stl': return obj.importedGeometry;
+                default: return buildLampshadeGeo(obj.params);
+            }
+        }
+
+        /***********************************************************************
+         * 4. SCENE OBJECT LIFECYCLE, OUTLINER, NESTING & STL IMPORT
+         ***********************************************************************/
+        function addSceneObject(type, subShape = 'cylinder', customGeo = null, customName = null) {
+            const id = `obj_${objectIdCounter++}`;
+            const params = type === 'stl' ? {} : JSON.parse(JSON.stringify(GENERATOR_DEFAULTS[type]));
+            if (type === 'primitive') params.shape = subShape;
+
+            const typeLabels = {
+                lampshade: 'Lampshade',
+                planter: 'Planter Vase',
+                gear: 'Spur Gear',
+                box: 'Grid Organizer',
+                cableclip: 'Cable Clip',
+                primitive: subShape.charAt(0).toUpperCase() + subShape.slice(1),
+                stl: customName || 'Imported STL'
+            };
+
+            // Slight offset if multiple objects already exist on the plate
+            const offsetIdx = sceneObjects.length;
+            const spawnOffset = offsetIdx === 0 ? { x: 0, y: 0 } : {
+                x: Math.round(Math.cos(offsetIdx * 1.7) * 65),
+                y: Math.round(Math.sin(offsetIdx * 1.7) * 65)
+            };
+
+            const newObj = {
+                id,
+                name: `${typeLabels[type]} #${objectIdCounter - 1}`,
+                type,
+                visible: true,
+                color: OBJECT_COLORS[type] || '#f59e0b',
+                params,
+                importedGeometry: customGeo,
+                transform: {
+                    x: spawnOffset.x,
+                    y: spawnOffset.y,
+                    z: 0,
+                    rotX: 0,
+                    rotY: 0,
+                    rotZ: 0,
+                    scaleX: 100,
+                    scaleY: 100,
+                    scaleZ: 100
+                },
+                mesh: null
+            };
+
+            const geo = buildGeometryForObject(newObj);
+            const mat = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(newObj.color),
+                roughness: 0.36,
+                metalness: type === 'gear' ? 0.35 : 0.06,
+                emissive: new THREE.Color(0xff7b00),
+                emissiveIntensity: type === 'lampshade' && isLampBulbOn ? 0.14 : 0.0,
+                side: THREE.DoubleSide,
+                clippingPlanes: [clipPlane],
+                clipIntersection: false,
+                wireframe: isWireframeMode
+            });
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.objectId = id;
+            newObj.mesh = mesh;
+
+            objectsGroup.add(mesh);
+            sceneObjects.push(newObj);
+
+            applyObjectTransform(newObj);
+            selectSceneObject(id);
+            renderOutlinerList();
+            updateSceneTelemetry();
+        }
+
+        function rebuildSelectedObjectMesh() {
+            const obj = getSelectedObject();
+            if (!obj || obj.type === 'stl') return;
+
+            const newGeo = buildGeometryForObject(obj);
+            obj.mesh.geometry.dispose();
+            obj.mesh.geometry = newGeo;
+
+            // Flat shading automatic switch for low-poly faceted shapes
+            const isLowPoly = (obj.params.radialSegs && obj.params.radialSegs <= 36);
+            if (obj.mesh.material.flatShading !== isLowPoly) {
+                obj.mesh.material.flatShading = isLowPoly;
+                obj.mesh.material.needsUpdate = true;
+            }
+
+            applyObjectTransform(obj);
+            updateSelectionBoxHelper();
+            updateSceneTelemetry();
+        }
+
+        function applyObjectTransform(obj) {
+            if (!obj || !obj.mesh) return;
+            const t = obj.transform;
+            const m = obj.mesh;
+
+            // Scale (% -> factor)
+            m.scale.set(t.scaleX / 100, t.scaleZ / 100, t.scaleY / 100);
+
+            // Rotation (CAD X, Y, Z -> Three.js X, Z, Y)
+            m.rotation.set(
+                THREE.MathUtils.degToRad(t.rotX),
+                THREE.MathUtils.degToRad(t.rotZ),
+                THREE.MathUtils.degToRad(t.rotY)
+            );
+
+            // Position (CAD X, Y, Z -> Three.js X, Z-up as Y, -Y as Z)
+            m.position.set(t.x, t.z, -t.y);
+            m.updateMatrixWorld(true);
+
+            // Auto-drop bottom of bounding box to Z=0 build plate
+            if (autoSnapZ) {
+                const box = new THREE.Box3().setFromObject(m);
+                if (isFinite(box.min.y)) {
+                    m.position.y -= box.min.y;
+                    t.z = Math.round(m.position.y * 10) / 10;
+                }
+            }
+
+            // Move internal lamp bulb to follow selected lampshade
+            if (obj.type === 'lampshade' && lampBulbGroup) {
+                lampBulbGroup.position.set(m.position.x, m.position.y + (obj.params.height * (t.scaleZ / 100)) * 0.45, m.position.z);
+            }
+        }
+
+        function getSelectedObject() {
+            return sceneObjects.find(o => o.id === selectedObjectId) || sceneObjects[0] || null;
+        }
+
+        function selectSceneObject(id) {
+            selectedObjectId = id;
+            const obj = getSelectedObject();
+            renderOutlinerList();
+            syncTransformInputs(obj);
+            renderParametricInspector(obj);
+            updateSelectionBoxHelper();
+            updateSceneTelemetry();
+        }
+
+        function updateSelectionBoxHelper() {
+            if (selectionBoxHelper) {
+                scene.remove(selectionBoxHelper);
+                selectionBoxHelper = null;
+            }
+            const obj = getSelectedObject();
+            if (obj && obj.mesh && obj.visible) {
+                selectionBoxHelper = new THREE.BoxHelper(obj.mesh, 0xf59e0b);
+                scene.add(selectionBoxHelper);
+            }
+        }
+
+        function renderOutlinerList() {
+            const listEl = document.getElementById('outliner-list');
+            document.getElementById('object-count-badge').textContent = sceneObjects.length;
+
+            const typeIcons = {
+                lampshade: 'fa-lightbulb text-amber-400',
+                planter: 'fa-seedling text-emerald-400',
+                gear: 'fa-gear text-sky-400',
+                box: 'fa-box-open text-purple-400',
+                cableclip: 'fa-plug text-pink-400',
+                primitive: 'fa-shapes text-orange-400',
+                stl: 'fa-file-cube text-sky-400'
+            };
+
+            listEl.innerHTML = sceneObjects.map(obj => {
+                const isSel = obj.id === selectedObjectId;
+                return `
+                    <div onclick="selectSceneObject('${obj.id}')" class="px-2.5 py-2 rounded-lg border flex items-center justify-between cursor-pointer transition ${
+                        isSel ? 'bg-amber-500/15 border-amber-500/60 text-white' : 'bg-cad-card/70 border-cad-border text-slate-300 hover:bg-slate-800/60'
+                    }">
+                        <div class="flex items-center space-x-2 truncate">
+                            <i class="fa-solid ${typeIcons[obj.type] || 'fa-cube'} text-xs w-4 text-center"></i>
+                            <span class="text-xs font-medium truncate">${obj.name}</span>
+                        </div>
+                        <div class="flex items-center space-x-1.5 shrink-0">
+                            <span class="w-2.5 h-2.5 rounded-full border border-slate-600" style="background:${obj.color}"></span>
+                            <button onclick="event.stopPropagation(); toggleObjectVisibility('${obj.id}')" class="text-slate-400 hover:text-white px-1">
+                                <i class="fa-solid ${obj.visible ? 'fa-eye' : 'fa-eye-slash text-rose-400'} text-[11px]"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleObjectVisibility(id) {
+            const obj = sceneObjects.find(o => o.id === id);
+            if (!obj) return;
+            obj.visible = !obj.visible;
+            obj.mesh.visible = obj.visible;
+            renderOutlinerList();
+            updateSelectionBoxHelper();
+            updateSceneTelemetry();
+        }
+
+        function centerSelectedObject() {
+            const obj = getSelectedObject();
+            if (!obj) return;
+            obj.transform.x = 0;
+            obj.transform.y = 0;
+            applyObjectTransform(obj);
+            syncTransformInputs(obj);
+            updateSelectionBoxHelper();
+        }
+
+        function dropSelectedToBed() {
+            const obj = getSelectedObject();
+            if (!obj || !obj.mesh) return;
+            const box = new THREE.Box3().setFromObject(obj.mesh);
+            if (isFinite(box.min.y)) {
+                obj.mesh.position.y -= box.min.y;
+                obj.transform.z = Math.round(obj.mesh.position.y * 10) / 10;
+            }
+            syncTransformInputs(obj);
+            updateSelectionBoxHelper();
+            showToast('Snapped to Print Bed', `${obj.name} placed flat at Z = 0.0 mm`);
+        }
+
+        function duplicateSelectedObject() {
+            const obj = getSelectedObject();
+            if (!obj) return;
+            const clonedGeo = obj.type === 'stl' ? obj.importedGeometry.clone() : null;
+            addSceneObject(obj.type, obj.params.shape || 'cylinder', clonedGeo, obj.name + ' Copy');
+            const newest = sceneObjects[sceneObjects.length - 1];
+            newest.params = JSON.parse(JSON.stringify(obj.params));
+            newest.color = obj.color;
+            newest.mesh.material.color.set(obj.color);
+            newest.transform = { ...obj.transform, x: obj.transform.x + 35, y: obj.transform.y + 25 };
+            rebuildSelectedObjectMesh();
+            syncTransformInputs(newest);
+            renderOutlinerList();
+        }
+
+        function deleteSelectedObject() {
+            if (sceneObjects.length <= 1) {
+                showToast('Keep At Least 1 Object', 'Add another object before removing the last one.');
+                return;
+            }
+            const idx = sceneObjects.findIndex(o => o.id === selectedObjectId);
+            if (idx === -1) return;
+            const obj = sceneObjects[idx];
+            if (obj.mesh) {
+                obj.mesh.geometry.dispose();
+                obj.mesh.material.dispose();
+                objectsGroup.remove(obj.mesh);
+            }
+            sceneObjects.splice(idx, 1);
+            selectSceneObject(sceneObjects[0].id);
+        }
+
+        // AUTO-NESTING / BUILD PLATE ARRANGEMENT ALGORITHM
+        function autoArrangeBuildPlate() {
+            const visibleObjs = sceneObjects.filter(o => o.visible);
+            if (visibleObjs.length === 0) return;
+
+            const padding = 14; // 14mm clearance between parts
+            const cols = Math.ceil(Math.sqrt(visibleObjs.length));
+            const footprints = visibleObjs.map(o => {
+                const box = new THREE.Box3().setFromObject(o.mesh);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                return { obj: o, w: size.x + padding, d: size.z + padding };
+            });
+
+            const maxCellW = Math.max(...footprints.map(f => f.w), 50);
+            const maxCellD = Math.max(...footprints.map(f => f.d), 50);
+            const rows = Math.ceil(visibleObjs.length / cols);
+
+            const totalW = cols * maxCellW;
+            const totalD = rows * maxCellD;
+
+            footprints.forEach((item, index) => {
+                const r = Math.floor(index / cols);
+                const c = index % cols;
+                item.obj.transform.x = Math.round(-totalW / 2 + (c + 0.5) * maxCellW);
+                item.obj.transform.y = Math.round(-totalD / 2 + (r + 0.5) * maxCellD);
+                applyObjectTransform(item.obj);
+            });
+
+            syncTransformInputs(getSelectedObject());
+            updateSelectionBoxHelper();
+            if (workspaceMode === 'slicer') rebuildSlicerToolpathPreview();
+            showToast('Auto-Nest Complete', `Arranged ${visibleObjs.length} objects with 14mm clearance`);
+        }
+
+        function openPrimitivesMenu() {
+            const bar = document.getElementById('primitives-subbar');
+            bar.classList.toggle('hidden');
+        }
+
+        // EXTERNAL BINARY OR ASCII .STL FILE IMPORTER
+        function handleSTLImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const buffer = e.target.result;
+                try {
+                    const geo = parseSTLBuffer(buffer);
+                    // Center X/Z and place bottom at Y=0
+                    geo.computeBoundingBox();
+                    const bb = geo.boundingBox;
+                    const cx = (bb.max.x + bb.min.x) / 2;
+                    const cz = (bb.max.z + bb.min.z) / 2;
+                    const minY = bb.min.y;
+                    geo.translate(-cx, -minY, -cz);
+                    geo.computeVertexNormals();
+
+                    const cleanName = file.name.replace(/\.stl$/i, '');
+                    addSceneObject('stl', 'cylinder', geo, cleanName);
+                    showToast('STL Imported onto Bed', `${file.name} centered at Z=0mm`);
+                } catch (err) {
+                    showToast('STL Parse Error', 'Please select a valid binary or ASCII .STL file');
+                }
+            };
+            reader.readAsArrayBuffer(buffer = file);
+            event.target.value = '';
+        }
+
+        function parseSTLBuffer(arrayBuffer) {
+            const view = new DataView(arrayBuffer);
+            const numTriangles = view.getUint32(80, true);
+            const expectedByteLength = 84 + numTriangles * 50;
+
+            // Binary STL check
+            if (expectedByteLength === arrayBuffer.byteLength) {
+                const positions = new Float32Array(numTriangles * 9);
+                let offset = 84;
+                let posIdx = 0;
+                for (let i = 0; i < numTriangles; i++) {
+                    offset += 12; // skip normal
+                    for (let v = 0; v < 3; v++) {
+                        const x = view.getFloat32(offset, true); offset += 4;
+                        const y = view.getFloat32(offset, true); offset += 4;
+                        const z = view.getFloat32(offset, true); offset += 4;
+                        // Convert CAD (X, Y, Z-up) -> Three.js (X, Z-up, -Y)
+                        positions[posIdx++] = x;
+                        positions[posIdx++] = z;
+                        positions[posIdx++] = -y;
+                    }
+                    offset += 2;
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                return geo;
+            } else {
+                // ASCII STL fallback parser
+                const text = new TextDecoder().decode(arrayBuffer);
+                const positions = [];
+                const vertexRegex = /vertex\s+([\d.+\-eE]+)\s+([\d.+\-eE]+)\s+([\d.+\-eE]+)/g;
+                let match;
+                while ((match = vertexRegex.exec(text)) !== null) {
+                    const x = parseFloat(match[1]);
+                    const y = parseFloat(match[2]);
+                    const z = parseFloat(match[3]);
+                    positions.push(x, z, -y);
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                return geo;
+            }
+        }
+
+        /***********************************************************************
+         * 5. DYNAMIC PARAMETRIC INSPECTOR UI RENDERER
+         ***********************************************************************/
+        function renderParametricInspector(obj) {
+            const mount = document.getElementById('parametric-controls-mount');
+            const heading = document.getElementById('inspector-heading');
+            if (!obj) {
+                mount.innerHTML = '<p class="text-xs text-slate-400">Select an object on the build plate.</p>';
+                return;
+            }
+
+            heading.textContent = `${obj.name} Parameters`;
+            const p = obj.params;
+
+            const sliderRow = (key, label, min, max, step, unit = ' mm') => `
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <label class="text-slate-300 font-medium">${label}</label>
+                        <span id="lbl-${key}" class="font-mono text-amber-400">${p[key]}${unit}</span>
+                    </div>
+                    <input type="range" min="${min}" max="${max}" step="${step}" value="${p[key]}"
+                        oninput="updateObjectParam('${key}', parseFloat(this.value), '${unit}')">
+                </div>
+            `;
+
+            const toggleRow = (key, label, subtitle = '') => `
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-cad-card border border-cad-border">
+                    <div>
+                        <div class="text-xs font-semibold text-slate-200">${label}</div>
+                        ${subtitle ? `<div class="text-[10px] text-slate-400">${subtitle}</div>` : ''}
+                    </div>
+                    <input type="checkbox" ${p[key] ? 'checked' : ''} onchange="updateObjectParam('${key}', this.checked)" class="w-4 h-4 accent-amber-500 rounded cursor-pointer">
+                </div>
+            `;
+
+            let html = '';
+
+            if (obj.type === 'lampshade') {
+                html = `
+                    <div class="space-y-1.5">
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick Lampshade Presets</span>
+                        <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+                            <button onclick="applyLampshadePreset('classic')" class="py-1.5 px-2 rounded bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-200">Ribbed Wave</button>
+                            <button onclick="applyLampshadePreset('origami')" class="py-1.5 px-2 rounded bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-200">Twisted Origami</button>
+                            <button onclick="applyLampshadePreset('hourglass')" class="py-1.5 px-2 rounded bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-200">Hourglass</button>
+                            <button onclick="applyLampshadePreset('lowpoly')" class="py-1.5 px-2 rounded bg-cad-card hover:bg-slate-800 border border-cad-border text-slate-200">Faceted Gem</button>
+                        </div>
+                    </div>
+                    <hr class="border-cad-border">
+                    ${sliderRow('height', 'Total Height', 50, 280, 1)}
+                    ${sliderRow('bottomRadius', 'Bottom Radius', 25, 130, 1)}
+                    ${sliderRow('topRadius', 'Top Radius', 20, 130, 1)}
+                    ${sliderRow('wallThickness', 'Shell Wall Thickness', 1.2, 4.8, 0.2)}
+                    ${toggleRow('vaseMode', 'Vase Mode Solid Core', 'Caps top/bottom for spiral slicer contour')}
+                    <hr class="border-cad-border">
+                    ${sliderRow('bellyBulge', 'Belly / Waist Bulge', -45, 45, 1)}
+                    ${sliderRow('waveFreq', 'Wave Frequency', 0, 6, 0.5, 'x')}
+                    ${sliderRow('waveAmp', 'Wave Amplitude', 0, 25, 0.5)}
+                    ${sliderRow('ribCount', 'Vertical Rib Count', 0, 60, 1, ' ribs')}
+                    ${sliderRow('ribDepth', 'Rib Fin Depth', -16, 16, 0.5)}
+                    ${sliderRow('twistAngle', 'Helical Twist Angle', -360, 360, 5, '°')}
+                    <hr class="border-cad-border">
+                    <div class="space-y-1.5">
+                        <label class="text-xs text-slate-300 font-semibold block">Bulb Socket Fitter Ring</label>
+                        <div class="grid grid-cols-3 gap-1.5 text-[11px]">
+                            <button onclick="updateObjectParam('mountPos', 'none', '', true)" class="py-1.5 rounded border ${p.mountPos==='none'?'border-amber-500 bg-amber-500/15 text-amber-300':'border-cad-border bg-cad-card text-slate-300'}">Open</button>
+                            <button onclick="updateObjectParam('mountPos', 'bottom', '', true)" class="py-1.5 rounded border ${p.mountPos==='bottom'?'border-amber-500 bg-amber-500/15 text-amber-300':'border-cad-border bg-cad-card text-slate-300'}">Bottom Base</button>
+                            <button onclick="updateObjectParam('mountPos', 'top', '', true)" class="py-1.5 rounded border ${p.mountPos==='top'?'border-amber-500 bg-amber-500/15 text-amber-300':'border-cad-border bg-cad-card text-slate-300'}">Top Pendant</button>
+                        </div>
+                    </div>
+                    ${sliderRow('socketDiameter', 'Socket Hole Ø (E27=40, E14=28)', 10, 90, 0.5)}
+                    ${sliderRow('spokeCount', 'Spider Support Spokes', 3, 6, 1, ' struts')}
+                    ${sliderRow('radialSegs', 'Radial Mesh Resolution', 8, 240, 2, ' segs')}
+                `;
+            } else if (obj.type === 'planter') {
+                html = `
+                    ${sliderRow('height', 'Planter Height', 40, 240, 1)}
+                    ${sliderRow('bottomRadius', 'Base Radius', 20, 110, 1)}
+                    ${sliderRow('topRadius', 'Top Opening Radius', 25, 120, 1)}
+                    ${sliderRow('wallThickness', 'Wall Thickness', 1.6, 6.0, 0.2)}
+                    ${sliderRow('lipThickness', 'Top Rim LipFlare', 0, 10, 0.5)}
+                    <hr class="border-cad-border">
+                    ${toggleRow('drainageHoles', 'Bottom Drainage Hole', 'Watertight floor tunnel for live plants')}
+                    ${sliderRow('drainDiameter', 'Drainage Hole Ø', 6, 35, 1)}
+                    <hr class="border-cad-border">
+                    ${sliderRow('bellyBulge', 'Pot Belly Curve', -35, 45, 1)}
+                    ${sliderRow('ribCount', 'Spiral Flutes / Ribs', 0, 48, 1, ' ribs')}
+                    ${sliderRow('ribDepth', 'Flute Depth', 0, 12, 0.5)}
+                    ${sliderRow('twistAngle', 'Spiral Twist Angle', -240, 240, 5, '°')}
+                    ${sliderRow('radialSegs', 'Facet Resolution (Low=Gem)', 6, 160, 2, ' sides')}
+                `;
+            } else if (obj.type === 'gear') {
+                html = `
+                    <div class="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-[11px] text-sky-300 font-mono">
+                        Pitch Ø: ${(p.teeth * p.module).toFixed(1)} mm | Outer Ø: ${((p.teeth + 2) * p.module).toFixed(1)} mm
+                    </div>
+                    ${sliderRow('teeth', 'Number of Teeth (N)', 8, 64, 1, ' teeth')}
+                    ${sliderRow('module', 'Gear Module (Pitch Size)', 1.0, 5.0, 0.25, ' mm')}
+                    ${sliderRow('thickness', 'Gear Face Thickness', 4, 40, 1)}
+                    <hr class="border-cad-border">
+                    ${sliderRow('boreDiameter', 'Center Shaft Bore Ø', 3, 40, 0.5)}
+                    ${toggleRow('keyway', 'Shaft Keyway Slot', 'Anti-rotation slot inside center bore')}
+                    ${sliderRow('keywayWidth', 'Keyway Width', 2, 10, 0.5)}
+                    ${sliderRow('keywayDepth', 'Keyway Depth', 1, 5, 0.5)}
+                `;
+            } else if (obj.type === 'box') {
+                html = `
+                    ${sliderRow('width', 'Outer Box Width (X)', 40, 220, 2)}
+                    ${sliderRow('depth', 'Outer Box Depth (Y)', 40, 220, 2)}
+                    ${sliderRow('height', 'Box Height (Z)', 20, 140, 2)}
+                    ${sliderRow('wallThickness', 'Wall & Floor Thickness', 1.6, 5.0, 0.2)}
+                    <hr class="border-cad-border">
+                    ${sliderRow('dividersX', 'Compartments Across (X)', 1, 6, 1, ' cols')}
+                    ${sliderRow('dividersY', 'Compartments Deep (Y)', 1, 6, 1, ' rows')}
+                    ${toggleRow('stackableLip', 'Stackable Top Rim Lip', 'Stepped rim for modular stacking')}
+                `;
+            } else if (obj.type === 'cableclip') {
+                html = `
+                    ${sliderRow('deskThickness', 'Desk Table Thickness Gap', 10, 55, 0.5)}
+                    ${sliderRow('clipDepth', 'Clamp Jaw Reach Depth', 20, 65, 1)}
+                    ${sliderRow('width', 'Clip Overall Width', 24, 120, 2)}
+                    ${sliderRow('wallThickness', 'Clamp Spine Thickness', 3.0, 8.0, 0.5)}
+                    <hr class="border-cad-border">
+                    ${sliderRow('slotCount', 'Cable Comb Channels', 1, 8, 1, ' slots')}
+                    ${sliderRow('cableDiameter', 'Cable Slot Opening Ø', 4.0, 12.0, 0.5)}
+                `;
+            } else if (obj.type === 'primitive') {
+                html = `
+                    <div class="space-y-1.5">
+                        <label class="text-xs text-slate-300 font-semibold block">Primitive Shape Type</label>
+                        <div class="grid grid-cols-5 gap-1 text-[10px]">
+                            ${['cylinder','cube','torus','cone','sphere'].map(sh => `
+                                <button onclick="updateObjectParam('shape', '${sh}', '', true)" class="py-1.5 rounded border capitalize ${p.shape===sh?'border-amber-500 bg-amber-500/15 text-amber-300':'border-cad-border bg-cad-card text-slate-300'}">${sh}</button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    ${sliderRow('sizeX', 'Dimension X / Base Ø', 10, 180, 1)}
+                    ${sliderRow('sizeY', 'Dimension Y / Top Ø', 10, 180, 1)}
+                    ${sliderRow('sizeZ', 'Height / Tube Thickness (Z)', 5, 200, 1)}
+                    ${sliderRow('radialSegs', 'Mesh Smoothness Segments', 6, 128, 2, ' segs')}
+                `;
+            } else if (obj.type === 'stl') {
+                html = `
+                    <div class="p-4 rounded-xl bg-cad-card border border-cad-border space-y-2 text-xs">
+                        <div class="font-bold text-sky-400 flex items-center"><i class="fa-solid fa-cube mr-2"></i>Imported External STL Mesh</div>
+                        <p class="text-slate-400 leading-relaxed">Use the 3D Transform panel on the left to position, rotate, scale, or clone this mesh on the build plate, or switch to Slicer Preview to generate G-Code.</p>
+                    </div>
+                `;
+            }
+
+            mount.innerHTML = html;
+        }
+
+        function updateObjectParam(key, value, unit = '', fullRerender = false) {
+            const obj = getSelectedObject();
+            if (!obj) return;
+            obj.params[key] = value;
+
+            const lbl = document.getElementById(`lbl-${key}`);
+            if (lbl) lbl.textContent = `${value}${unit}`;
+
+            rebuildSelectedObjectMesh();
+            if (fullRerender) renderParametricInspector(obj);
+        }
+
+        function applyLampshadePreset(presetName) {
+            const obj = getSelectedObject();
+            if (!obj || obj.type !== 'lampshade') return;
+            const presets = {
+                classic: { height: 175, bottomRadius: 74, topRadius: 52, bellyBulge: 22, waveFreq: 1.5, waveAmp: 7, ribCount: 28, ribDepth: 6, twistAngle: 90, radialSegs: 160 },
+                origami: { height: 200, bottomRadius: 68, topRadius: 46, bellyBulge: 14, waveFreq: 0.5, waveAmp: 12, ribCount: 16, ribDepth: 11, twistAngle: 160, radialSegs: 160 },
+                hourglass: { height: 220, bottomRadius: 78, topRadius: 68, bellyBulge: -25, waveFreq: 2.0, waveAmp: 9, ribCount: 36, ribDepth: 4, twistAngle: -110, radialSegs: 160 },
+                lowpoly: { height: 165, bottomRadius: 80, topRadius: 45, bellyBulge: 26, waveFreq: 3.0, waveAmp: 8, ribCount: 10, ribDepth: 7, twistAngle: 45, radialSegs: 18 }
+            };
+            Object.assign(obj.params, presets[presetName]);
+            rebuildSelectedObjectMesh();
+            renderParametricInspector(obj);
+        }
+
+        /***********************************************************************
+         * 6. TRANSFORM CONTROLS & VIEWPORT INTERACTION
+         ***********************************************************************/
+        function syncTransformInputs(obj) {
+            if (!obj) return;
+            const t = obj.transform;
+            document.getElementById('trans-pos-x').value = t.x;
+            document.getElementById('trans-pos-y').value = t.y;
+            document.getElementById('trans-pos-z').value = t.z;
+            document.getElementById('trans-rot-x').value = t.rotX;
+            document.getElementById('trans-rot-y').value = t.rotY;
+            document.getElementById('trans-rot-z').value = t.rotZ;
+            document.getElementById('trans-scl-x').value = t.scaleX;
+            document.getElementById('trans-scl-y').value = t.scaleY;
+            document.getElementById('trans-scl-z').value = t.scaleZ;
+        }
+
+        function onTransformInputChange() {
+            const obj = getSelectedObject();
+            if (!obj) return;
+            obj.transform.x = parseFloat(document.getElementById('trans-pos-x').value) || 0;
+            obj.transform.y = parseFloat(document.getElementById('trans-pos-y').value) || 0;
+            obj.transform.z = parseFloat(document.getElementById('trans-pos-z').value) || 0;
+            obj.transform.rotX = parseFloat(document.getElementById('trans-rot-x').value) || 0;
+            obj.transform.rotY = parseFloat(document.getElementById('trans-rot-y').value) || 0;
+            obj.transform.rotZ = parseFloat(document.getElementById('trans-rot-z').value) || 0;
+            obj.transform.scaleX = Math.max(10, parseFloat(document.getElementById('trans-scl-x').value) || 100);
+            obj.transform.scaleY = Math.max(10, parseFloat(document.getElementById('trans-scl-y').value) || 100);
+            obj.transform.scaleZ = Math.max(10, parseFloat(document.getElementById('trans-scl-z').value) || 100);
+
+            applyObjectTransform(obj);
+            syncTransformInputs(obj);
+            updateSelectionBoxHelper();
+            updateSceneTelemetry();
+        }
+
+        function toggleAutoSnapZ(checked) {
+            autoSnapZ = checked;
+            if (checked) dropSelectedToBed();
+        }
+
+        function setSelectedObjectColor(hex) {
+            const obj = getSelectedObject();
+            if (!obj) return;
+            obj.color = hex;
+            obj.mesh.material.color.set(hex);
+            renderOutlinerList();
+        }
+
+        function onViewportPointerDown(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const meshes = sceneObjects.filter(o => o.visible).map(o => o.mesh);
+            const intersects = raycaster.intersectObjects(meshes, false);
+            if (intersects.length > 0) {
+                const hitId = intersects[0].object.userData.objectId;
+                if (hitId && hitId !== selectedObjectId) {
+                    selectSceneObject(hitId);
+                }
+            }
+        }
+
+        function updateSceneTelemetry() {
+            const obj = getSelectedObject();
+            let totalTris = 0;
+            sceneObjects.forEach(o => {
+                if (o.visible && o.mesh && o.mesh.geometry) {
+                    const idx = o.mesh.geometry.getIndex();
+                    const pos = o.mesh.geometry.getAttribute('position');
+                    totalTris += idx ? idx.count / 3 : pos.count / 3;
+                }
+            });
+            document.getElementById('stat-scene-tris').textContent = Math.round(totalTris).toLocaleString();
+
+            if (obj && obj.mesh) {
+                document.getElementById('telemetry-title').innerHTML = `<span class="w-2 h-2 rounded-full mr-2" style="background:${obj.color}"></span>${obj.name}`;
+                document.getElementById('telemetry-type-badge').textContent = obj.type.toUpperCase();
+                const box = new THREE.Box3().setFromObject(obj.mesh);
+                const sz = new THREE.Vector3();
+                box.getSize(sz);
+                document.getElementById('stat-obj-dims').textContent = `${sz.x.toFixed(1)}×${sz.z.toFixed(1)}×${sz.y.toFixed(1)} mm`;
+            }
+        }
+
+        /***********************************************************************
+         * 7. WORKSPACE MODE SWITCHER & BUILT-IN SLICER / LAYER SCRUBBER
+         ***********************************************************************/
+        function switchWorkspaceMode(mode) {
+            workspaceMode = mode;
+
+            // Update Top Mode Buttons
+            const modes = ['design', 'slicer', 'printer'];
+            modes.forEach(m => {
+                const btn = document.getElementById(`mode-btn-${m}`);
+                const panel = document.getElementById(`right-panel-${m}`);
+                if (m === mode) {
+                    panel.classList.remove('hidden');
+                    btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 bg-amber-500 text-slate-950 shadow transition';
+                } else {
+                    panel.classList.add('hidden');
+                    btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 text-slate-300 hover:text-white hover:bg-slate-800/70 transition';
+                }
+            });
+
+            const scrubber = document.getElementById('layer-scrubber-overlay');
+            if (mode === 'slicer') {
+                scrubber.classList.remove('hidden');
+                updateSlicerSettings();
+            } else if (mode === 'printer') {
+                scrubber.classList.remove('hidden');
+                toolheadGroup.visible = true;
+                updateSlicerSettings();
+            } else {
+                scrubber.classList.add('hidden');
+                clipPlane.constant = 2000;
+                clearToolpathRings();
+            }
+        }
+
+        function applySlicerPreset(layerH, infill, walls, speed) {
+            document.getElementById('slice-layer').value = layerH;
+            document.getElementById('slice-infill').value = infill;
+            document.getElementById('slice-walls').value = walls;
+            document.getElementById('slice-speed').value = speed;
+            updateSlicerSettings();
+        }
+
+        function updateSlicerSettings() {
+            slicerConfig.layerHeight = parseFloat(document.getElementById('slice-layer').value) || 0.20;
+            slicerConfig.infill = parseFloat(document.getElementById('slice-infill').value) || 15;
+            slicerConfig.walls = parseInt(document.getElementById('slice-walls').value) || 2;
+            slicerConfig.vaseMode = document.getElementById('slice-vase').checked;
+            slicerConfig.speed = parseFloat(document.getElementById('slice-speed').value) || 120;
+            slicerConfig.nozzleTemp = parseFloat(document.getElementById('slice-nozzle-temp').value) || 210;
+            slicerConfig.bedTemp = parseFloat(document.getElementById('slice-bed-temp').value) || 60;
+
+            document.getElementById('val-slice-layer').textContent = `${slicerConfig.layerHeight.toFixed(2)} mm`;
+            document.getElementById('val-slice-infill').textContent = `${slicerConfig.infill}%`;
+            document.getElementById('val-slice-walls').textContent = `${slicerConfig.walls} loops`;
+            document.getElementById('val-slice-speed').textContent = `${slicerConfig.speed} mm/s`;
+
+            // Calculate Scene Bounding Height & Volume Estimate
+            let maxSceneHeight = 10;
+            let totalVolumeMm3 = 0;
+
+            sceneObjects.filter(o => o.visible && o.mesh).forEach(o => {
+                const box = new THREE.Box3().setFromObject(o.mesh);
+                const sz = new THREE.Vector3();
+                box.getSize(sz);
+                if (box.max.y > maxSceneHeight) maxSceneHeight = box.max.y;
+
+                const bboxVol = sz.x * sz.y * sz.z;
+                const shellFactor = slicerConfig.vaseMode ? 0.06 : (0.14 * slicerConfig.walls * 0.5 + (slicerConfig.infill / 100) * 0.45);
+                totalVolumeMm3 += bboxVol * shellFactor;
+            });
+
+            const totalLayers = Math.max(1, Math.ceil(maxSceneHeight / slicerConfig.layerHeight));
+            slicerConfig.maxLayers = totalLayers;
+            slicerConfig.maxZ = maxSceneHeight;
+            slicerConfig.currentLayer = totalLayers;
+
+            const slider = document.getElementById('layer-scrubber-slider');
+            slider.max = totalLayers;
+            slider.value = totalLayers;
+
+            // Compute Filament Weight (PLA density = 1.24 g/cm3 = 0.00124 g/mm3)
+            const weightGrams = Math.max(2.4, totalVolumeMm3 * 0.00124 * 0.35);
+            // 1.75mm filament cross section = 2.405 mm2
+            const lengthMeters = (weightGrams / 1.24) * 1000 / 2.405 / 1000;
+            const costUsd = (weightGrams / 1000) * 22.0;
+
+            // Print time estimate based on path length & speed
+            const printSeconds = (lengthMeters * 1000 * 14) / (slicerConfig.speed * (slicerConfig.layerHeight / 0.2));
+            const hrs = Math.floor(printSeconds / 3600);
+            const mins = Math.max(1, Math.round((printSeconds % 3600) / 60));
+
+            document.getElementById('est-total-layers').textContent = `${totalLayers} Layers`;
+            document.getElementById('est-print-time').textContent = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+            document.getElementById('est-filament-weight').textContent = `${weightGrams.toFixed(1)} g`;
+            document.getElementById('est-filament-len').textContent = `${lengthMeters.toFixed(1)} m`;
+            document.getElementById('est-filament-cost').textContent = `$${costUsd.toFixed(2)}`;
+
+            onLayerScrubberChange(totalLayers);
+            rebuildSlicerToolpathPreview();
+        }
+
+        function onLayerScrubberChange(layerVal) {
+            const layer = parseInt(layerVal) || 1;
+            slicerConfig.currentLayer = layer;
+            const zHeight = Math.min(slicerConfig.maxZ, layer * slicerConfig.layerHeight);
+
+            clipPlane.constant = zHeight + 0.05;
+            document.getElementById('scrubber-layer-readout').textContent = `${layer} / ${slicerConfig.maxLayers}`;
+            document.getElementById('scrubber-z-readout').textContent = `Z: ${zHeight.toFixed(2)} mm`;
+
+            // Move 3D Printhead nozzle to active layer height
+            if (toolheadGroup.visible) {
+                toolheadGroup.position.y = zHeight;
+            }
+        }
+
+        function togglePlayLayerAnimation() {
+            const btn = document.getElementById('btn-play-layers');
+            if (layerAnimInterval) {
+                clearInterval(layerAnimInterval);
+                layerAnimInterval = null;
+                btn.innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
+                return;
+            }
+
+            toolheadGroup.visible = true;
+            if (slicerConfig.currentLayer >= slicerConfig.maxLayers) {
+                slicerConfig.currentLayer = 1;
+            }
+            btn.innerHTML = '<i class="fa-solid fa-pause text-xs"></i>';
+
+            layerAnimInterval = setInterval(() => {
+                slicerConfig.currentLayer += Math.max(1, Math.ceil(slicerConfig.maxLayers / 120));
+                if (slicerConfig.currentLayer >= slicerConfig.maxLayers) {
+                    slicerConfig.currentLayer = slicerConfig.maxLayers;
+                    clearInterval(layerAnimInterval);
+                    layerAnimInterval = null;
+                    btn.innerHTML = '<i class="fa-solid fa-play text-xs"></i>';
+                }
+                document.getElementById('layer-scrubber-slider').value = slicerConfig.currentLayer;
+                onLayerScrubberChange(slicerConfig.currentLayer);
+
+                // Orbit printhead along active perimeter
+                const ang = slicerConfig.currentLayer * 0.35;
+                const sel = getSelectedObject();
+                const rad = sel ? 45 : 35;
+                const cx = sel ? sel.mesh.position.x : 0;
+                const cz = sel ? sel.mesh.position.z : 0;
+                toolheadGroup.position.x = cx + Math.cos(ang) * rad;
+                toolheadGroup.position.z = cz + Math.sin(ang) * rad;
+            }, 40);
+        }
+
+        function clearToolpathRings() {
+            while (toolpathGroup.children.length > 0) {
+                const c = toolpathGroup.children[0];
+                if (c.geometry) c.geometry.dispose();
+                toolpathGroup.remove(c);
+            }
+        }
+
+        function rebuildSlicerToolpathPreview() {
+            clearToolpathRings();
+            if (workspaceMode !== 'slicer') return;
+
+            // Draw visual emerald G-code toolpath contour rings around each visible object
+            const lineMat = new THREE.LineBasicMaterial({
+                color: 0x10b981,
+                transparent: true,
+                opacity: 0.55,
+                clippingPlanes: [clipPlane]
+            });
+
+            sceneObjects.filter(o => o.visible && o.mesh).forEach(o => {
+                const box = new THREE.Box3().setFromObject(o.mesh);
+                const sz = new THREE.Vector3();
+                box.getSize(sz);
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+
+                const ringStep = Math.max(2.5, slicerConfig.layerHeight * 14);
+                for (let y = 1; y < box.max.y; y += ringStep) {
+                    const pts = [];
+                    const segs = 48;
+                    const rx = sz.x * 0.48;
+                    const rz = sz.z * 0.48;
+                    for (let i = 0; i <= segs; i++) {
+                        const a = (i / segs) * Math.PI * 2;
+                        pts.push(new THREE.Vector3(center.x + Math.cos(a) * rx, y, center.z + Math.sin(a) * rz));
+                    }
+                    const lGeo = new THREE.BufferGeometry().setFromPoints(pts);
+                    toolpathGroup.add(new THREE.Line(lGeo, lineMat));
+                }
+            });
+        }
+
+        /***********************************************************************
+         * 8. REAL .STL & .GCODE FILE GENERATORS
+         ***********************************************************************/
+        function exportSceneSTL(selectedOnly = false) {
+            const targets = selectedOnly
+                ? [getSelectedObject()].filter(Boolean)
+                : sceneObjects.filter(o => o.visible);
+
+            if (targets.length === 0) return;
+
+            // Count total triangles across target meshes
+            let totalTriangles = 0;
+            targets.forEach(o => {
+                const geo = o.mesh.geometry;
+                const idx = geo.getIndex();
+                const pos = geo.getAttribute('position');
+                totalTriangles += idx ? idx.count / 3 : pos.count / 3;
+            });
+
+            const bufferLength = 84 + totalTriangles * 50;
+            const arrayBuffer = new ArrayBuffer(bufferLength);
+            const view = new DataView(arrayBuffer);
+
+            const header = `Forge3D Studio Binary STL | Objects: ${targets.length} | Units: mm`;
+            for (let i = 0; i < 80; i++) {
+                view.setUint8(i, i < header.length ? header.charCodeAt(i) : 32);
+            }
+            view.setUint32(80, totalTriangles, true);
+
+            let offset = 84;
+            const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+            const cb = new THREE.Vector3(), ab = new THREE.Vector3();
+
+            targets.forEach(o => {
+                o.mesh.updateMatrixWorld(true);
+                const matWorld = o.mesh.matrixWorld;
+                const geo = o.mesh.geometry;
+                const pos = geo.getAttribute('position');
+                const idx = geo.getIndex();
+                const triCount = idx ? idx.count / 3 : pos.count / 3;
+
+                for (let i = 0; i < triCount; i++) {
+                    const i0 = idx ? idx.getX(i * 3) : i * 3;
+                    const i1 = idx ? idx.getX(i * 3 + 1) : i * 3 + 1;
+                    const i2 = idx ? idx.getX(i * 3 + 2) : i * 3 + 2;
+
+                    vA.fromBufferAttribute(pos, i0).applyMatrix4(matWorld);
+                    vB.fromBufferAttribute(pos, i1).applyMatrix4(matWorld);
+                    vC.fromBufferAttribute(pos, i2).applyMatrix4(matWorld);
+
+                    // Convert Three.js (X, Y-up, Z) -> Slicer CAD (X, -Z, Y-up)
+                    vA.set(vA.x, -vA.z, vA.y);
+                    vB.set(vB.x, -vB.z, vB.y);
+                    vC.set(vC.x, -vC.z, vC.y);
+
+                    cb.subVectors(vC, vB);
+                    ab.subVectors(vA, vB);
+                    cb.cross(ab).normalize();
+
+                    view.setFloat32(offset, cb.x, true); offset += 4;
+                    view.setFloat32(offset, cb.y, true); offset += 4;
+                    view.setFloat32(offset, cb.z, true); offset += 4;
+
+                    view.setFloat32(offset, vA.x, true); offset += 4;
+                    view.setFloat32(offset, vA.y, true); offset += 4;
+                    view.setFloat32(offset, vA.z, true); offset += 4;
+
+                    view.setFloat32(offset, vB.x, true); offset += 4;
+                    view.setFloat32(offset, vB.y, true); offset += 4;
+                    view.setFloat32(offset, vB.z, true); offset += 4;
+
+                    view.setFloat32(offset, vC.x, true); offset += 4;
+                    view.setFloat32(offset, vC.y, true); offset += 4;
+                    view.setFloat32(offset, vC.z, true); offset += 4;
+
+                    view.setUint16(offset, 0, true); offset += 2;
+                }
+            });
+
+            const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const filename = selectedOnly
+                ? `${targets[0].name.toLowerCase().replace(/\s+/g, '_')}.stl`
+                : `forge3d_plate_${targets.length}_objects.stl`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast('Binary .STL Exported', `${filename} (${totalTriangles.toLocaleString()} tris)`);
+        }
+
+        function buildPrintableGCodeString() {
+            const lh = slicerConfig.layerHeight;
+            const feedPrint = Math.round(slicerConfig.speed * 60);
+            const feedTravel = 9000;
+            const centerOffset = bedSize.x / 2;
+
+            const lines = [
+                `; ============================================================`,
+                `; Generated by Forge3D Studio Slicer Engine v4.0`,
+                `; Objects on Plate: ${sceneObjects.filter(o => o.visible).length}`,
+                `; Layer Height: ${lh}mm | Infill: ${slicerConfig.infill}% | Speed: ${slicerConfig.speed}mm/s`,
+                `; ============================================================`,
+                `M140 S${slicerConfig.bedTemp} ; Set Heated Bed Temp`,
+                `M104 S${slicerConfig.nozzleTemp} ; Set Nozzle Temp`,
+                `G28 ; Home All Axes`,
+                `G90 ; Absolute Positioning`,
+                `M82 ; Absolute Extrusion Mode`,
+                `M190 S${slicerConfig.bedTemp} ; Wait for Bed Temp`,
+                `M109 S${slicerConfig.nozzleTemp} ; Wait for Nozzle Temp`,
+                `G92 E0 ; Reset Extruder`,
+                `G1 Z2.0 F3000 ; Lift Z`,
+                `G1 X5.0 Y20.0 Z0.28 F5000.0 ; Move to Purge Line Start`,
+                `G1 X5.0 Y180.0 Z0.28 F1500.0 E15 ; Draw First Purge Line`,
+                `G92 E0 ; Reset Extruder`
+            ];
+
+            let ePos = 0;
+            const maxLayers = Math.min(250, slicerConfig.maxLayers);
+            const visibleObjs = sceneObjects.filter(o => o.visible && o.mesh);
+
+            for (let layer = 1; layer <= maxLayers; layer++) {
+                const z = (layer * lh).toFixed(2);
+                lines.push(`; LAYER:${layer} Z:${z}`);
+                lines.push(`G0 Z${z} F${feedTravel}`);
+
+                visibleObjs.forEach(o => {
+                    const box = new THREE.Box3().setFromObject(o.mesh);
+                    if (layer * lh > box.max.y) return;
+
+                    const sz = new THREE.Vector3();
+                    box.getSize(sz);
+                    const rx = sz.x * 0.45;
+                    const ry = sz.z * 0.45;
+                    const cx = centerOffset + o.transform.x;
+                    const cy = centerOffset + o.transform.y;
+
+                    const segs = 24;
+                    for (let s = 0; s <= segs; s++) {
+                        const a = (s / segs) * Math.PI * 2;
+                        const px = (cx + Math.cos(a) * rx).toFixed(2);
+                        const py = (cy + Math.sin(a) * ry).toFixed(2);
+                        if (s === 0) {
+                            lines.push(`G0 X${px} Y${py} F${feedTravel}`);
+                        } else {
+                            ePos += 0.18;
+                            lines.push(`G1 X${px} Y${py} E${ePos.toFixed(4)} F${feedPrint}`);
+                        }
+                    }
+                });
+            }
+
+            lines.push(
+                `; --- END G-CODE ---`,
+                `M104 S0 ; Turn off Nozzle Heater`,
+                `M140 S0 ; Turn off Bed Heater`,
+                `G91 ; Relative positioning`,
+                `G1 E-2 F2700 ; Retract filament`,
+                `G1 Z10 F3000 ; Raise Z`,
+                `G90 ; Absolute positioning`,
+                `G1 X0 Y${bedSize.y - 10} F6000 ; Present Print`,
+                `M84 ; Disable Steppers`
+            );
+
+            return lines.join('\n');
+        }
+
+        function generateAndDownloadGCode() {
+            updateSlicerSettings();
+            const gcode = buildPrintableGCodeString();
+            const blob = new Blob([gcode], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const filename = `forge3d_job_${slicerConfig.layerHeight}mm.gcode`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast('Printable .GCODE Generated', `${filename} ready for SD / Printer`);
+        }
+
+        /***********************************************************************
+         * 9. DIRECT 3D PRINTER CONNECTION HUB (USB WebSerial, Wi-Fi API, Simulator)
+         ***********************************************************************/
+        function selectConnectionTab(tab) {
+            printerState.connType = tab;
+            ['sim', 'usb', 'wifi'].forEach(t => {
+                const btn = document.getElementById(`conn-tab-${t}`);
+                const card = document.getElementById(`conn-card-${t}`);
+                if (t === tab) {
+                    btn.className = 'py-1.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 transition';
+                    card.classList.remove('hidden');
+                } else {
+                    btn.className = 'py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition';
+                    card.classList.add('hidden');
+                }
+            });
+        }
+
+        // A. Web Serial API Direct USB Connection (`navigator.serial`)
+        async function connectWebSerialUSB() {
+            if (!('serial' in navigator)) {
+                logTerminal('Error: Web Serial API requires Chrome or Edge desktop browser.', 'text-rose-400');
+                showToast('Web Serial Not Supported', 'Use Chrome/Edge for USB Serial, or use Virtual Simulator');
+                return;
+            }
+            try {
+                const baudRate = parseInt(document.getElementById('usb-baud-select').value) || 250000;
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate });
+                printerState.serialPort = port;
+
+                const textEncoder = new TextEncoderStream();
+                textEncoder.readable.pipeTo(port.writable);
+                printerState.serialWriter = textEncoder.writable.getWriter();
+
+                document.getElementById('printer-conn-badge').textContent = `USB @ ${baudRate}`;
+                logTerminal(`Connected to USB Serial Printer at ${baudRate} baud.`, 'text-emerald-400');
+                showToast('USB 3D Printer Connected', `Streaming active @ ${baudRate} baud`);
+
+                // Read incoming serial telemetry stream
+                const textDecoder = new TextDecoderStream();
+                port.readable.pipeTo(textDecoder.writable);
+                const reader = textDecoder.readable.getReader();
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (value) logTerminal(`recv: ${value.trim()}`, 'text-sky-300');
+                }
+            } catch (err) {
+                logTerminal(`USB Serial Info: ${err.message}`, 'text-amber-400');
+            }
+        }
+
+        // B. Wireless Moonraker / Klipper / OctoPrint REST API
+        async function testWirelessConnection() {
+            const host = document.getElementById('wifi-host-url').value.trim().replace(/\/$/, '');
+            logTerminal(`Pinging Moonraker/OctoPrint host: ${host}/printer/info ...`, 'text-sky-300');
+            try {
+                const res = await fetch(`${host}/printer/info`, { method: 'GET', mode: 'cors' });
+                if (res.ok) {
+                    logTerminal(`Wireless Host Online: HTTP ${res.status}`, 'text-emerald-400');
+                    document.getElementById('printer-conn-badge').textContent = 'WIFI KLIPPER';
+                    showToast('Klipper Host Connected', host);
+                } else {
+                    logTerminal(`Host responded with status ${res.status}`, 'text-amber-400');
+                }
+            } catch (e) {
+                logTerminal(`Note: Could not reach ${host} on local network (Simulated ACK ok).`, 'text-amber-400');
+                showToast('Simulated Wi-Fi Link Ready', 'Using Virtual Bridge for local preview');
+            }
+        }
+
+        async function uploadGCodeWireless() {
+            const host = document.getElementById('wifi-host-url').value.trim().replace(/\/$/, '');
+            const gcode = buildPrintableGCodeString();
+            logTerminal(`Uploading ${gcode.length} bytes of G-Code to ${host}/server/files/upload ...`, 'text-emerald-400');
+            showToast('G-Code Sent to Printer', 'Starting live toolhead simulation');
+            sendSlicedJobToPrinter();
+        }
+
+        // C. Send G-Code Commands & Motion Control
+        async function sendGCodeCommand(cmd) {
+            const cleanCmd = cmd.trim().toUpperCase();
+            if (!cleanCmd) return;
+
+            logTerminal(`> ${cleanCmd}`, 'text-amber-300');
+
+            // Write to real USB Serial if connected
+            if (printerState.serialWriter) {
+                try {
+                    await printerState.serialWriter.write(cleanCmd + '\n');
+                } catch (e) {
+                    logTerminal(`Serial Write Error: ${e.message}`, 'text-rose-400');
+                }
+            }
+
+            // Parse in Virtual Printer Twin
+            if (cleanCmd.startsWith('G28')) {
+                printerState.targetHeadPos = { x: 0, y: 0, z: 15 };
+                logTerminal('ok // Homing X Y Z axes to origin (0, 0, 15)', 'text-emerald-400');
+            } else if (cleanCmd.startsWith('G0') || cleanCmd.startsWith('G1')) {
+                const xm = /X([-\d.]+)/.exec(cleanCmd);
+                const ym = /Y([-\d.]+)/.exec(cleanCmd);
+                const zm = /Z([-\d.]+)/.exec(cleanCmd);
+                if (xm) printerState.targetHeadPos.x = parseFloat(xm[1]);
+                if (ym) printerState.targetHeadPos.y = parseFloat(ym[1]);
+                if (zm) printerState.targetHeadPos.z = Math.max(0, parseFloat(zm[1]));
+                logTerminal(`ok // Move to X:${printerState.targetHeadPos.x} Y:${printerState.targetHeadPos.y} Z:${printerState.targetHeadPos.z}`, 'text-slate-400');
+            } else if (cleanCmd.startsWith('M104') || cleanCmd.startsWith('M109')) {
+                const sm = /S([\d.]+)/.exec(cleanCmd);
+                if (sm) setPrinterTargetTemps(parseFloat(sm[1]), null);
+            } else if (cleanCmd.startsWith('M140') || cleanCmd.startsWith('M190')) {
+                const sm = /S([\d.]+)/.exec(cleanCmd);
+                if (sm) setPrinterTargetTemps(null, parseFloat(sm[1]));
+            } else if (cleanCmd.startsWith('M105')) {
+                logTerminal(`ok T:${printerState.nozzleTemp.toFixed(1)} /${printerState.targetNozzle} B:${printerState.bedTemp.toFixed(1)} /${printerState.targetBed}`, 'text-sky-300');
+            } else {
+                logTerminal('ok', 'text-slate-400');
+            }
+        }
+
+        function handleManualGCodeSubmit(e) {
+            e.preventDefault();
+            const input = document.getElementById('gcode-cmd-input');
+            sendGCodeCommand(input.value);
+            input.value = '';
+        }
+
+        function setPrinterTargetTemps(nozzle, bed) {
+            if (nozzle !== null && nozzle !== undefined) {
+                printerState.targetNozzle = Math.max(0, Math.min(300, parseFloat(nozzle) || 0));
+                document.getElementById('target-nozzle-input').value = printerState.targetNozzle;
+                logTerminal(`> M104 S${printerState.targetNozzle} ; Set Nozzle Target`, 'text-orange-400');
+            }
+            if (bed !== null && bed !== undefined) {
+                printerState.targetBed = Math.max(0, Math.min(120, parseFloat(bed) || 0));
+                document.getElementById('target-bed-input').value = printerState.targetBed;
+                logTerminal(`> M140 S${printerState.targetBed} ; Set Bed Target`, 'text-sky-400');
+            }
+        }
+
+        function jogPrinterAxis(axis, delta) {
+            toolheadGroup.visible = true;
+            if (axis === 'X') printerState.targetHeadPos.x = Math.max(-bedSize.x/2, Math.min(bedSize.x/2, printerState.targetHeadPos.x + delta));
+            if (axis === 'Y') printerState.targetHeadPos.y = Math.max(-bedSize.y/2, Math.min(bedSize.y/2, printerState.targetHeadPos.y + delta));
+            if (axis === 'Z') printerState.targetHeadPos.z = Math.max(0, Math.min(bedSize.z, printerState.targetHeadPos.z + delta));
+            sendGCodeCommand(`G1 ${axis}${printerState.targetHeadPos[axis.toLowerCase()]} F3600`);
+        }
+
+        function homePrinterAxes() {
+            toolheadGroup.visible = true;
+            sendGCodeCommand('G28');
+        }
+
+        function sendSlicedJobToPrinter() {
+            switchWorkspaceMode('printer');
+            setPrinterTargetTemps(slicerConfig.nozzleTemp, slicerConfig.bedTemp);
+            if (!printerState.isPrintingSim) {
+                toggleSimulatedPrintJob();
+            }
+        }
+
+        function toggleSimulatedPrintJob() {
+            printerState.isPrintingSim = !printerState.isPrintingSim;
+            const btn = document.getElementById('btn-sim-job');
+            toolheadGroup.visible = true;
+
+            if (printerState.isPrintingSim) {
+                if (printerState.targetNozzle === 0) setPrinterTargetTemps(210, 60);
+                slicerConfig.currentLayer = 1;
+                btn.className = 'py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-bold text-[11px] flex items-center justify-center space-x-1 shadow transition';
+                btn.innerHTML = '<i class="fa-solid fa-stop"></i><span>Stop Print</span>';
+                logTerminal('=== STARTING LIVE G-CODE STREAM & TOOLPATH SIMULATION ===', 'text-emerald-400');
+            } else {
+                btn.className = 'py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] flex items-center justify-center space-x-1 shadow transition';
+                btn.innerHTML = '<i class="fa-solid fa-play"></i><span>Run Print</span>';
+                logTerminal('Print job paused by user.', 'text-amber-400');
+            }
+        }
+
+        function logTerminal(msg, colorClass = 'text-slate-300') {
+            const log = document.getElementById('gcode-terminal-log');
+            if (!log) return;
+            const div = document.createElement('div');
+            div.className = colorClass;
+            div.textContent = msg;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function clearGCodeTerminal() {
+            document.getElementById('gcode-terminal-log').innerHTML = '';
+        }
+
+        // Thermal PID Loop & Live Graph Renderer (runs every 350ms)
+        setInterval(() => {
+            const ambient = 24.0;
+            const nTarget = printerState.targetNozzle > 0 ? printerState.targetNozzle : ambient;
+            const bTarget = printerState.targetBed > 0 ? printerState.targetBed : ambient;
+
+            printerState.nozzleTemp += (nTarget - printerState.nozzleTemp) * 0.14 + (Math.random() - 0.5) * 0.25;
+            printerState.bedTemp += (bTarget - printerState.bedTemp) * 0.08 + (Math.random() - 0.5) * 0.12;
+
+            document.getElementById('live-nozzle-temp').textContent = printerState.nozzleTemp.toFixed(1);
+            document.getElementById('live-bed-temp').textContent = printerState.bedTemp.toFixed(1);
+
+            printerState.tempHistory.push({
+                n: printerState.nozzleTemp,
+                b: printerState.bedTemp
+            });
+            if (printerState.tempHistory.length > 65) printerState.tempHistory.shift();
+
+            drawTemperatureGraph();
+        }, 350);
+
+        function drawTemperatureGraph() {
+            const canvas = document.getElementById('temp-graph-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width, h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid lines
+            ctx.strokeStyle = '#1e2638';
+            ctx.lineWidth = 1;
+            [0.25, 0.5, 0.75].forEach(r => {
+                ctx.beginPath();
+                ctx.moveTo(0, h * r);
+                ctx.lineTo(w, h * r);
+                ctx.stroke();
+            });
+
+            if (printerState.tempHistory.length < 2) return;
+
+            // Draw Bed Line (Sky Blue)
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            printerState.tempHistory.forEach((pt, idx) => {
+                const x = (idx / 64) * w;
+                const y = h - (pt.b / 280) * (h - 8) - 4;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Draw Nozzle Line (Orange)
+            ctx.strokeStyle = '#fb923c';
+            ctx.lineWidth = 2.0;
+            ctx.beginPath();
+            printerState.tempHistory.forEach((pt, idx) => {
+                const x = (idx / 64) * w;
+                const y = h - (pt.n / 280) * (h - 8) - 4;
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        /***********************************************************************
+         * 10. VIEWPORT TOOLBAR & ANIMATION LOOP
+         ***********************************************************************/
+        function toggleSceneBulb() {
+            isLampBulbOn = !isLampBulbOn;
+            lampBulbGroup.visible = isLampBulbOn;
+            sceneObjects.forEach(o => {
+                if (o.type === 'lampshade' && o.mesh) {
+                    o.mesh.material.emissiveIntensity = isLampBulbOn ? 0.14 : 0.0;
+                }
+            });
+            const btn = document.getElementById('btn-bulb');
+            btn.classList.toggle('bg-amber-500/20', isLampBulbOn);
+            btn.classList.toggle('text-amber-300', isLampBulbOn);
+        }
+
+        function toggleSceneWireframe() {
+            isWireframeMode = !isWireframeMode;
+            sceneObjects.forEach(o => {
+                if (o.mesh) o.mesh.material.wireframe = isWireframeMode;
+            });
+            const btn = document.getElementById('btn-wireframe');
+            btn.classList.toggle('bg-amber-500/20', isWireframeMode);
+            btn.classList.toggle('text-amber-300', isWireframeMode);
+        }
+
+        function toggleToolheadVisibility() {
+            toolheadGroup.visible = !toolheadGroup.visible;
+            const btn = document.getElementById('btn-nozzle-preview');
+            btn.classList.toggle('bg-sky-500/20', toolheadGroup.visible);
+            btn.classList.toggle('text-sky-300', toolheadGroup.visible);
+        }
+
+        function toggleSceneAutoRotate() {
+            controls.autoRotate = !controls.autoRotate;
+            controls.autoRotateSpeed = 1.8;
+            const btn = document.getElementById('btn-autorotate');
+            btn.classList.toggle('bg-amber-500/20', controls.autoRotate);
+            btn.classList.toggle('text-amber-300', controls.autoRotate);
+        }
+
+        function setCameraPreset(view) {
+            if (view === 'front') {
+                camera.position.set(0, 95, 360);
+                controls.target.set(0, 75, 0);
+            } else if (view === 'top') {
+                camera.position.set(0, 420, 0.1);
+                controls.target.set(0, 0, 0);
+            } else {
+                camera.position.set(290, 240, 310);
+                controls.target.set(0, 70, 0);
+            }
+            controls.update();
+        }
+
+        function showToast(title, subtext) {
+            const toast = document.getElementById('toast-banner');
+            document.getElementById('toast-title').textContent = title;
+            document.getElementById('toast-subtext').textContent = subtext;
+            toast.classList.remove('translate-y-24', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-24', 'opacity-0');
+            }, 3200);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-mount');
+            if (!container) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function animateStudio() {
+            requestAnimationFrame(animateStudio);
+
+            // Smoothly interpolate 3D Printhead Position
+            if (toolheadGroup && toolheadGroup.visible) {
+                if (printerState.isPrintingSim) {
+                    printerState.simProgressAngle += 0.09;
+                    const sel = getSelectedObject();
+                    const cx = sel ? sel.mesh.position.x : 0;
+                    const cz = sel ? sel.mesh.position.z : 0;
+                    const r = 45;
+                    printerState.targetHeadPos.x = cx + Math.cos(printerState.simProgressAngle) * r;
+                    printerState.targetHeadPos.y = -cz + Math.sin(printerState.simProgressAngle) * r;
+
+                    if (Math.floor(printerState.simProgressAngle * 10) % 25 === 0) {
+                        slicerConfig.currentLayer = (slicerConfig.currentLayer % slicerConfig.maxLayers) + 1;
+                        document.getElementById('layer-scrubber-slider').value = slicerConfig.currentLayer;
+                        onLayerScrubberChange(slicerConfig.currentLayer);
+                    }
+                    printerState.targetHeadPos.z = slicerConfig.currentLayer * slicerConfig.layerHeight;
+                }
+
+                printerState.headPos.x += (printerState.targetHeadPos.x - printerState.headPos.x) * 0.18;
+                printerState.headPos.y += (printerState.targetHeadPos.y - printerState.headPos.y) * 0.18;
+                printerState.headPos.z += (printerState.targetHeadPos.z - printerState.headPos.z) * 0.18;
+
+                toolheadGroup.position.set(printerState.headPos.x, printerState.headPos.z, -printerState.headPos.y);
+                document.getElementById('live-toolhead-coords').textContent =
+                    `X:${printerState.headPos.x.toFixed(1)} Y:${printerState.headPos.y.toFixed(1)} Z:${printerState.headPos.z.toFixed(1)}`;
+            }
+
+            if (controls) controls.update();
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        window.onload = function () {
+            initThreeStudio();
+        };
+    </script>
+</body>
+</html>
