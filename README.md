@@ -34,5 +34,5 @@
 
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/YOUR_USERNAME/Forge3D-Studio.git](https://github.com/YOUR_USERNAME/Forge3D-Studio.git)
+   git clone [https://github.com/eemir2603/Forge3D-Studio.git](https://github.com/eemir2603/Forge3D-Studio.git)
    cd Forge3D-Studio
